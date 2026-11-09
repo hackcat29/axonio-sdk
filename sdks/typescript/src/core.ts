@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
+import { CLOUD_ENDPOINT, httpUnary, isHttpEndpoint, normalizeCloudEndpoint, type RpcError } from './http-transport';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -138,6 +139,12 @@ export interface ClawDBConfig {
   workspaceId?: string;
   timeoutMs?: number;
   maxRetries?: number;
+  /**
+   * 'grpc' for host:port servers, 'http' for the HTTP API (including the
+   * hosted cloud). Defaults to 'http' for an http(s) URL with a path, such
+   * as https://api.axonio.xyz/api/v1/gateway, and 'grpc' otherwise.
+   */
+  transport?: 'grpc' | 'http';
   /** Internal flag used by SDK health probes to avoid recursive local bootstrap. */
   __skipLocalBootstrap?: boolean;
 }
@@ -164,11 +171,15 @@ const NON_RETRYABLE = new Set<number>([
 ]);
 
 const LOCAL_ENDPOINT = 'http://127.0.0.1:50050';
-const CLOUD_ENDPOINT = 'https://cloud.clawdb.dev';
 const SERVICE = 'clawdb.v1.ClawDBService';
 const DEFAULT_SERVER_RELEASE_VERSION = '0.1.9';
 const DEFAULT_LOCAL_JWT_SECRET = 'clawdb-sdk-local-dev-secret';
 const DEFAULT_SESSION_SCOPES = ['*'];
+/** Sessions the client opens for itself. Sent explicitly: some server
+ * versions read ttl_secs 0 over HTTP as "expire immediately". */
+const DEFAULT_SESSION_TTL_SECS = 3600;
+/** Renew this long before expiry, so calls in flight don't hit a dead token. */
+const SESSION_RENEW_MARGIN_MS = 60_000;
 const MODULE_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = resolve(MODULE_DIR, '../proto/clawdb.proto');
 
@@ -689,7 +700,7 @@ function deriveAgentId(): string {
 }
 
 export class ClawDB extends EventEmitter {
-  public static readonly version: string = '0.1.11';
+  public static readonly version: string = '0.2.0';
 
   readonly endpoint: string;
   readonly apiKey?: string;
@@ -698,17 +709,21 @@ export class ClawDB extends EventEmitter {
   readonly timeoutMs: number;
   readonly maxRetries: number;
 
-  private readonly client: RawClient;
+  readonly transport: 'grpc' | 'http';
+  /** Created on first gRPC use; never created for the HTTP transport. */
+  private grpcClient?: RawClient;
   private readonly skipLocalBootstrap: boolean;
   private shouldWatchConnectivity = true;
   private localBootstrapPromise?: Promise<void>;
   private sessionToken?: string;
+  private sessionExpiresAt?: number;
   private sessionBootstrapPromise?: Promise<void>;
 
   constructor(config: ClawDBConfig = {}) {
     super();
 
-    this.endpoint = config.endpoint ?? LOCAL_ENDPOINT;
+    this.endpoint = normalizeCloudEndpoint(config.endpoint ?? LOCAL_ENDPOINT);
+    this.transport = config.transport ?? (isHttpEndpoint(this.endpoint) ? 'http' : 'grpc');
     this.apiKey = config.apiKey;
     this.agentId = config.agentId ?? deriveAgentId();
     this.workspaceId = config.workspaceId;
@@ -716,8 +731,9 @@ export class ClawDB extends EventEmitter {
     this.maxRetries = config.maxRetries ?? 3;
     this.skipLocalBootstrap = config.__skipLocalBootstrap ?? false;
 
-    this.client = getOrCreateClient(this.endpoint);
-    this.watchConnectivity();
+    if (this.transport === 'grpc') {
+      this.watchConnectivity();
+    }
   }
 
   // ─── Health ──────────────────────────────────────────────────────────────
@@ -733,7 +749,9 @@ export class ClawDB extends EventEmitter {
   }
 
   async ping(): Promise<void> {
-    await this.unaryCall('Health', {}, { timeoutMs: 500 });
+    // 500ms suits a local server; a first HTTPS round trip to the cloud
+    // (TLS, gateway, instance) can legitimately take longer.
+    await this.unaryCall('Health', {}, { timeoutMs: this.transport === 'http' ? this.timeoutMs : 500 });
   }
 
   // ─── Sessions ─────────────────────────────────────────────────────────────
@@ -748,9 +766,9 @@ export class ClawDB extends EventEmitter {
       agentId: opts.agentId ?? this.agentId,
       role: opts.role ?? 'assistant',
       scopes: opts.scopes ?? DEFAULT_SESSION_SCOPES,
-      ttlSecs: opts.ttlSecs ?? 0,
+      ttlSecs: opts.ttlSecs ?? DEFAULT_SESSION_TTL_SECS,
     });
-    this.sessionToken = String(r.token ?? '');
+    this.rememberSession(r);
     return {
       id: String(r.id ?? ''),
       token: String(r.token ?? ''),
@@ -775,7 +793,7 @@ export class ClawDB extends EventEmitter {
 
   async revokeSession(sessionId: string): Promise<boolean> {
     const r = await this.unaryCall<Record<string, unknown>>('RevokeSession', { session_id: sessionId });
-    this.sessionToken = undefined;
+    this.forgetSession();
     return Boolean(r.revoked);
   }
 
@@ -1067,9 +1085,12 @@ export class ClawDB extends EventEmitter {
   static fromEnv(): ClawDB {
     const timeoutRaw = Number(process.env.CLAWDB_TIMEOUT_MS ?? '10000');
     const retriesRaw = Number(process.env.CLAWDB_MAX_RETRIES ?? '3');
+    const url = process.env.CLAWDB_URL?.trim();
+    const apiKey = process.env.CLAWDB_API_KEY?.trim() || undefined;
     return new ClawDB({
-      endpoint: process.env.CLAWDB_URL,
-      apiKey: process.env.CLAWDB_API_KEY,
+      // An API key with no URL means the hosted cloud.
+      endpoint: url || (apiKey ? CLOUD_ENDPOINT : undefined),
+      apiKey,
       agentId: process.env.CLAWDB_AGENT_ID,
       workspaceId: process.env.CLAWDB_WORKSPACE_ID,
       timeoutMs: Number.isFinite(timeoutRaw) ? timeoutRaw : 10_000,
@@ -1078,15 +1099,16 @@ export class ClawDB extends EventEmitter {
   }
 
   static async autoProvision(config: Omit<ClawDBConfig, 'endpoint' | 'apiKey'> = {}): Promise<ClawDB> {
-    const explicitUrl = process.env.CLAWDB_URL;
-    if (explicitUrl && explicitUrl.trim().length > 0) {
-      const db = new ClawDB({ ...config, endpoint: explicitUrl });
+    const explicitUrl = process.env.CLAWDB_URL?.trim();
+    const apiKey = process.env.CLAWDB_API_KEY?.trim();
+    if (explicitUrl) {
+      // Keep the key: a self-hosted or cloud URL may need it.
+      const db = new ClawDB({ ...config, endpoint: explicitUrl, apiKey: apiKey || undefined });
       await db.ping();
       return db;
     }
 
-    const apiKey = process.env.CLAWDB_API_KEY;
-    if (apiKey && apiKey.trim().length > 0) {
+    if (apiKey) {
       const db = new ClawDB({ ...config, endpoint: CLOUD_ENDPOINT, apiKey });
       await db.ping();
       return db;
@@ -1102,7 +1124,41 @@ export class ClawDB extends EventEmitter {
 
   close(): void {
     this.shouldWatchConnectivity = false;
+    this.forgetSession();
+  }
+
+  /** The gRPC client, created on first use. */
+  private get client(): RawClient {
+    if (!this.grpcClient) {
+      this.grpcClient = getOrCreateClient(this.endpoint);
+    }
+    return this.grpcClient;
+  }
+
+  private rememberSession(session: Record<string, unknown>): void {
+    this.sessionToken = String(session.token ?? '') || undefined;
+    const expires = Date.parse(String(session.expires_at ?? session.expiresAt ?? ''));
+    this.sessionExpiresAt = Number.isFinite(expires) ? expires : undefined;
+  }
+
+  private forgetSession(): void {
     this.sessionToken = undefined;
+    this.sessionExpiresAt = undefined;
+  }
+
+  private sessionIsFresh(): boolean {
+    if (!this.sessionToken) return false;
+    return this.sessionExpiresAt === undefined || Date.now() < this.sessionExpiresAt - SESSION_RENEW_MARGIN_MS;
+  }
+
+  /** True when the server rejected the session token itself (expired or
+   * revoked), which a new session fixes, as opposed to a bad API key or a
+   * missing permission, which it doesn't. */
+  private isSessionRejection(error: unknown): boolean {
+    const e = error as Partial<RpcError> & { code?: number; message?: string };
+    if (e?.code !== grpc.status.UNAUTHENTICATED) return false;
+    if (e.sessionRejected) return true;
+    return /session/iu.test(String(e.message ?? ''));
   }
 
   private usesDefaultLocalEndpoint(): boolean {
@@ -1153,6 +1209,18 @@ export class ClawDB extends EventEmitter {
     scopes: string[];
     ttlSecs: number;
   }): Promise<Record<string, unknown>> {
+    if (this.transport === 'http') {
+      return this.unaryCallOnce<Record<string, unknown>>(
+        'CreateSession',
+        {
+          agent_id: toStableSessionAgentId(opts.agentId),
+          role: opts.role,
+          scopes: opts.scopes,
+          ttl_secs: opts.ttlSecs,
+        },
+        { timeoutMs: this.timeoutMs }
+      );
+    }
     const localHttpEndpoint = deriveLocalHttpEndpoint(this.endpoint);
     if (localHttpEndpoint) {
       const response = await fetch(`${localHttpEndpoint}/v1/sessions`, {
@@ -1188,7 +1256,9 @@ export class ClawDB extends EventEmitter {
     return this.unaryCallOnce<Record<string, unknown>>(
       'CreateSession',
       {
-        agent_id: opts.agentId,
+        // The server requires a UUID; derive a stable one from any other id,
+        // as the HTTP paths already did.
+        agent_id: toStableSessionAgentId(opts.agentId),
         role: opts.role,
         scopes: opts.scopes,
         ttl_secs: opts.ttlSecs,
@@ -1198,7 +1268,7 @@ export class ClawDB extends EventEmitter {
   }
 
   private async ensureSession(method: string): Promise<void> {
-    if (!this.requiresSession(method) || this.sessionToken) {
+    if (!this.requiresSession(method) || this.sessionIsFresh()) {
       return;
     }
 
@@ -1208,9 +1278,12 @@ export class ClawDB extends EventEmitter {
           agentId: this.agentId,
           role: 'assistant',
           scopes: DEFAULT_SESSION_SCOPES,
-          ttlSecs: 0,
+          ttlSecs: DEFAULT_SESSION_TTL_SECS,
         });
-        this.sessionToken = String(session.token ?? '');
+        this.rememberSession(session);
+        if (!this.sessionToken) {
+          throw new ClawDBAuthError('Server returned a session without a token', grpc.status.UNAUTHENTICATED);
+        }
       })().finally(() => {
         this.sessionBootstrapPromise = undefined;
       });
@@ -1225,10 +1298,15 @@ export class ClawDB extends EventEmitter {
     options: UnaryOptions = {}
   ): Promise<TRes> {
     await this.ensureEndpointReady();
-    await this.ensureSession(method);
+    try {
+      await this.ensureSession(method);
+    } catch (error) {
+      throw toClawError(error);
+    }
 
     const maxAttempts = Math.max(1, this.maxRetries);
     let attempt = 0;
+    let renewedSession = false;
 
     while (attempt < maxAttempts) {
       attempt += 1;
@@ -1238,6 +1316,18 @@ export class ClawDB extends EventEmitter {
         debugLog({ method, durationMs: Date.now() - start, status: 'ok' });
         return response;
       } catch (error) {
+        // An expired or revoked session: open a new one and retry once.
+        if (!renewedSession && this.requiresSession(method) && this.isSessionRejection(error)) {
+          renewedSession = true;
+          attempt -= 1;
+          this.forgetSession();
+          try {
+            await this.ensureSession(method);
+          } catch (renewError) {
+            throw toClawError(renewError);
+          }
+          continue;
+        }
         const mapped = toClawError(error);
         debugLog({ method, durationMs: Date.now() - start, status: mapped.code, retryAttempt: attempt });
 
@@ -1256,6 +1346,17 @@ export class ClawDB extends EventEmitter {
     payload: Record<string, unknown>,
     options: UnaryOptions
   ): Promise<TRes> {
+    if (this.transport === 'http') {
+      return httpUnary(method, payload, {
+        baseUrl: this.endpoint,
+        apiKey: this.apiKey,
+        sessionToken: this.sessionToken,
+        agentId: this.agentId,
+        workspaceId: this.workspaceId,
+        timeoutMs: options.timeoutMs ?? this.timeoutMs,
+        signal: options.signal,
+      }) as Promise<TRes>;
+    }
     return new Promise<TRes>((resolveCall, rejectCall) => {
       const deadline = new Date(Date.now() + (options.timeoutMs ?? this.timeoutMs));
       const clientMethod = (this.client as unknown as Record<string, unknown>)[method];
