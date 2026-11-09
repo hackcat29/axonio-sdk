@@ -8,10 +8,10 @@ import httpx
 import pytest
 import respx
 
-from clawdb._http import CLOUD_ENDPOINT, http_base_url, stable_agent_id
-from clawdb.async_client import AsyncClawDB
-from clawdb.client import ClawDB
-from clawdb.errors import (
+from axonio._http import CLOUD_ENDPOINT, http_base_url, stable_agent_id
+from axonio.async_client import AsyncClawDB
+from axonio.client import ClawDB
+from axonio.errors import (
     ClawDBAccessDeniedError,
     ClawDBAuthError,
     ClawDBNotFoundError,

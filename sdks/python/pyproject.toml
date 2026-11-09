@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "clawdb"
+name = "axonio"
 version = "0.2.0"
-description = "Zero-config database for AI agents."
+description = "Persistent memory for AI agents: hybrid recall, branch and merge. Python client for Axonio."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["ai", "agents", "database", "memory", "clawdb", "langchain", "openai", "grpc"]
+keywords = ["ai", "agents", "memory", "axonio", "langchain", "openai", "mcp", "knowledge-graph"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
@@ -32,7 +32,7 @@ langchain = ["langchain-core>=0.2"]
 openai = ["openai>=1.30"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["clawdb"]
+packages = ["axonio"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [".venv*", "venv", "build-check", "dist", "**/__pycache__"]
@@ -48,9 +48,9 @@ dependencies = [
 
 [tool.hatch.envs.default.scripts]
 test = "pytest tests/ -v"
-type-check = "mypy clawdb/"
-format = "ruff format clawdb/ tests/"
-lint = "ruff check clawdb/ tests/"
+type-check = "mypy axonio/"
+format = "ruff format axonio/ tests/"
+lint = "ruff check axonio/ tests/"
 
 [tool.ruff]
 line-length = 100

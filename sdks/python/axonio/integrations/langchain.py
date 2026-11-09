@@ -12,8 +12,8 @@ try:
 except ImportError as exc:
     raise ImportError("Install clawdb[langchain] to use LangChain integration: pip install clawdb[langchain]") from exc
 
-from clawdb.async_client import AsyncClawDB
-from clawdb.client import ClawDB
+from axonio.async_client import AsyncClawDB
+from axonio.client import ClawDB
 
 
 class ClawDBRetriever(BaseRetriever):

@@ -1,25 +1,26 @@
-# clawdb
+# axonio
 
-Official Python client for ClawDB, with sync and async APIs. Pure Python over
-HTTPS: no gRPC toolchain or generated code to install.
+Official Python client for [Axonio](https://axonio.xyz): persistent memory for AI agents, with sync and async APIs.
+
+> Formerly `clawdb`. `pip install axonio` now installs this package, and `import clawdb` still works; `AXONIO_*` environment variables take precedence over `CLAWDB_*`. Pure Python over HTTPS: no gRPC toolchain or generated code to install.
 
 ## Install
 
 ```bash
-pip install clawdb
+pip install axonio
 ```
 
 ## Quick Start
 
 ### Hosted (Axonio cloud)
 
-Create an API key in the dashboard. With only `CLAWDB_API_KEY` set, the client
+Create an API key in the dashboard. With only `AXONIO_API_KEY` set, the client
 connects to the hosted gateway (`https://api.axonio.xyz/api/v1/gateway`).
 
 ```python
-from clawdb import ClawDB
+from axonio import Axonio
 
-with ClawDB(api_key="ck_live_...", endpoint="https://api.axonio.xyz/api/v1/gateway") as db:
+with Axonio(api_key="ck_live_...", endpoint="https://api.axonio.xyz/api/v1/gateway") as db:
     memory_id = db.memory.remember("Customer prefers weekly updates", tags=["customer"])
     hits = db.memory.search("how often should we update the customer?", top_k=5)
     branch = db.branches.fork("customer-experiment")
@@ -33,15 +34,15 @@ Point `endpoint` at your clawdb-server. A bare address on the gRPC port
 (8080); any other URL is used as the HTTP API.
 
 ```python
-db = ClawDB(endpoint="http://localhost:8080", agent_id="py-agent")
+db = Axonio(endpoint="http://localhost:8080", agent_id="py-agent")
 ```
 
 ### Async
 
 ```python
-from clawdb import AsyncClawDB
+from axonio import AsyncAxonio
 
-async with AsyncClawDB(api_key="ck_live_...", endpoint="https://api.axonio.xyz/api/v1/gateway") as db:
+async with AsyncAxonio(api_key="ck_live_...", endpoint="https://api.axonio.xyz/api/v1/gateway") as db:
     await db.memory.remember("Ship the changelog on Friday", memory_type="task")
     hits = await db.memory.search("release plan")
 ```
@@ -60,9 +61,9 @@ async with AsyncClawDB(api_key="ck_live_...", endpoint="https://api.axonio.xyz/a
 
 ## Client Variants
 
-- `ClawDB` for synchronous code
-- `AsyncClawDB` for asyncio applications
-- `clawdb()` helper for environment-aware client creation
+- `Axonio` for synchronous code (also exported as `ClawDB`)
+- `AsyncAxonio` for asyncio applications (also `AsyncClawDB`)
+- `axonio()` helper for environment-aware client creation
 
 ## API Surface
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from clawdb._http import HttpCore
-from clawdb.errors import ClawDBTimeoutError
-from clawdb.models import ReflectJob, SyncActionResult, SyncResult, SyncStatusResult
+from axonio._http import HttpCore
+from axonio.errors import ClawDBTimeoutError
+from axonio.models import ReflectJob, SyncActionResult, SyncResult, SyncStatusResult
 
 
 def to_job(value: Any) -> ReflectJob:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from clawdb.async_client import AsyncClawDB
+from axonio.async_client import AsyncClawDB
 
 try:
     from mcp.server import Server  # type: ignore[import]

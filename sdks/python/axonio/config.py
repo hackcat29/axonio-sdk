@@ -4,22 +4,22 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
 class ClawDBConfig(BaseSettings):
-    """ClawDB configuration. Reads CLAWDB_* environment variables automatically."""
+    """Axonio configuration. Reads AXONIO_* environment variables (the older CLAWDB_* names still work)."""
 
-    endpoint: str = Field(default="http://localhost:50050", validation_alias="CLAWDB_ENDPOINT")
-    api_key: str = Field(default="", validation_alias="CLAWDB_API_KEY")
-    agent_id: str = Field(default="default-agent", validation_alias="CLAWDB_AGENT_ID")
-    workspace: str = Field(default="default", validation_alias="CLAWDB_WORKSPACE")
-    role: str = Field(default="assistant", validation_alias="CLAWDB_ROLE")
-    region: str = Field(default="local", validation_alias="CLAWDB_REGION")
-    timeout_ms: int = Field(default=30000, validation_alias="CLAWDB_TIMEOUT_MS")
-    tls: bool = Field(default=False, validation_alias="CLAWDB_TLS")
-    log_level: str = Field(default="INFO", validation_alias="CLAWDB_LOG_LEVEL")
+    endpoint: str = Field(default="http://localhost:50050", validation_alias=AliasChoices("AXONIO_URL", "AXONIO_ENDPOINT", "CLAWDB_ENDPOINT"))
+    api_key: str = Field(default="", validation_alias=AliasChoices("AXONIO_API_KEY", "CLAWDB_API_KEY"))
+    agent_id: str = Field(default="default-agent", validation_alias=AliasChoices("AXONIO_AGENT_ID", "CLAWDB_AGENT_ID"))
+    workspace: str = Field(default="default", validation_alias=AliasChoices("AXONIO_WORKSPACE", "CLAWDB_WORKSPACE"))
+    role: str = Field(default="assistant", validation_alias=AliasChoices("AXONIO_ROLE", "CLAWDB_ROLE"))
+    region: str = Field(default="local", validation_alias=AliasChoices("AXONIO_REGION", "CLAWDB_REGION"))
+    timeout_ms: int = Field(default=30000, validation_alias=AliasChoices("AXONIO_TIMEOUT_MS", "CLAWDB_TIMEOUT_MS"))
+    tls: bool = Field(default=False, validation_alias=AliasChoices("AXONIO_TLS", "CLAWDB_TLS"))
+    log_level: str = Field(default="INFO", validation_alias=AliasChoices("AXONIO_LOG_LEVEL", "CLAWDB_LOG_LEVEL"))
 
     model_config = {"populate_by_name": True, "extra": "ignore"}
 

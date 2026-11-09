@@ -25,7 +25,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 
-from clawdb.errors import (
+from axonio.errors import (
     ClawDBAccessDeniedError,
     ClawDBAuthError,
     ClawDBError,

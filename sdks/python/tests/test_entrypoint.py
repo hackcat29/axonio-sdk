@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from clawdb import AsyncClawDB, ClawDB, clawdb
+from axonio import AsyncClawDB, ClawDB, clawdb
 
 
 def test_clawdb_returns_sync_client_without_event_loop() -> None:

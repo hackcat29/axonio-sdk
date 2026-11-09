@@ -4,17 +4,17 @@ from unittest.mock import patch
 
 import pytest
 
-from clawdb._http import CLOUD_ENDPOINT
-from clawdb.async_client import AsyncClawDB
-from clawdb.client import ClawDB
-from clawdb.provision import ProvisionResult, resolve_endpoint
+from axonio._http import CLOUD_ENDPOINT
+from axonio.async_client import AsyncClawDB
+from axonio.client import ClawDB
+from axonio.provision import ProvisionResult, resolve_endpoint
 
 
 @pytest.mark.asyncio
 async def test_resolve_endpoint_prefers_running_local_server(monkeypatch) -> None:
     monkeypatch.delenv("CLAWDB_URL", raising=False)
     monkeypatch.delenv("CLAWDB_API_KEY", raising=False)
-    with patch("clawdb.provision._is_port_open", return_value=True):
+    with patch("axonio.provision._is_port_open", return_value=True):
         result = await resolve_endpoint()
     assert result == ProvisionResult(endpoint="http://localhost:50050", api_key=None)
 
@@ -35,8 +35,8 @@ async def test_explicit_url_keeps_the_api_key(monkeypatch) -> None:
 
 def test_sync_connect_auto_resolves_local_endpoint() -> None:
     db = ClawDB()
-    with patch("clawdb.client.resolve_endpoint", return_value=ProvisionResult(endpoint="http://localhost:50050", api_key=None)), \
-         patch("clawdb.client.HttpCore.open_session", return_value={"token": "t"}) as open_session:
+    with patch("axonio.client.resolve_endpoint", return_value=ProvisionResult(endpoint="http://localhost:50050", api_key=None)), \
+         patch("axonio.client.HttpCore.open_session", return_value={"token": "t"}) as open_session:
         db.connect()
     assert db._config.endpoint == "http://localhost:50050"
     assert db._core is not None and db._core.base_url == "http://localhost:8080"
@@ -53,8 +53,8 @@ async def test_async_connect_auto_resolves_local_endpoint() -> None:
     async def fake_open(self):  # noqa: ANN001
         return {"token": "t"}
 
-    with patch("clawdb.async_client.resolve_endpoint", fake_resolve), \
-         patch("clawdb.async_client.AsyncHttpCore.open_session", fake_open):
+    with patch("axonio.async_client.resolve_endpoint", fake_resolve), \
+         patch("axonio.async_client.AsyncHttpCore.open_session", fake_open):
         await db.connect()
     assert db._config.endpoint == "http://localhost:50050"
     assert db._core is not None and db._core.base_url == "http://localhost:8080"

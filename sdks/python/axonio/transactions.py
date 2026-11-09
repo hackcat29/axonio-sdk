@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from clawdb._http import HttpCore
-from clawdb.models import TxInfo
+from axonio._http import HttpCore
+from axonio.models import TxInfo
 
 
 class TxClient:

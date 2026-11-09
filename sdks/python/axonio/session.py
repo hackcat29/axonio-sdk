@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from clawdb._http import HttpCore
+from axonio._http import HttpCore
 
 
 class SessionClient:

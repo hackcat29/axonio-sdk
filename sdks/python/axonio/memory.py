@@ -4,9 +4,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from clawdb._http import HttpCore
-from clawdb.errors import ClawDBError, ClawDBValidationError
-from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, SearchResult
+from axonio._http import HttpCore
+from axonio.errors import ClawDBError, ClawDBValidationError
+from axonio.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, SearchResult
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 

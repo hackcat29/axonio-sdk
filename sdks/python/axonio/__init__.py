@@ -1,13 +1,13 @@
-"""ClawDB Python SDK — the cognitive database for AI agents."""
+"""Axonio Python SDK: persistent memory for AI agents."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Awaitable
 
-from clawdb.async_client import AsyncClawDB
-from clawdb.client import ClawDB
-from clawdb.errors import (
+from axonio.async_client import AsyncClawDB
+from axonio.client import ClawDB
+from axonio.errors import (
     ClawDBAccessDeniedError,
     ClawDBAuthError,
     ClawDBError,
@@ -19,11 +19,11 @@ from clawdb.errors import (
     ClawDBUnavailableError,
     ClawDBValidationError,
 )
-from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncActionResult, SyncResult, SyncStatusResult, TxInfo
-from clawdb.transactions import TxClient
+from axonio.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncActionResult, SyncResult, SyncStatusResult, TxInfo
+from axonio.transactions import TxClient
 
 
-def clawdb() -> ClawDB | Awaitable[AsyncClawDB]:
+def axonio() -> ClawDB | Awaitable[AsyncClawDB]:
     """Return sync client in sync code, or awaitable async client inside an event loop."""
     try:
         asyncio.get_running_loop()
@@ -31,7 +31,16 @@ def clawdb() -> ClawDB | Awaitable[AsyncClawDB]:
     except RuntimeError:
         return ClawDB.auto_provision()
 
+# `Axonio` / `AsyncAxonio` are the same classes as `ClawDB` / `AsyncClawDB`;
+# `clawdb()` remains as an alias of `axonio()`.
+Axonio = ClawDB
+AsyncAxonio = AsyncClawDB
+clawdb = axonio
+
 __all__ = [
+    "axonio",
+    "Axonio",
+    "AsyncAxonio",
     "clawdb",
     "ClawDB",
     "AsyncClawDB",

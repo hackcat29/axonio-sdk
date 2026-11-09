@@ -6,15 +6,15 @@ from typing import Any
 
 import structlog
 
-from clawdb._http import HttpCore
-from clawdb.branches import BranchClient
-from clawdb.config import ClawDBConfig
-from clawdb.memory import MemoryClient
-from clawdb.provision import resolve_endpoint
-from clawdb.reflect import ReflectClient
-from clawdb.session import SessionClient
-from clawdb.sync_client import SyncClientWrapper
-from clawdb.transactions import TxClient
+from axonio._http import HttpCore
+from axonio.branches import BranchClient
+from axonio.config import ClawDBConfig
+from axonio.memory import MemoryClient
+from axonio.provision import resolve_endpoint
+from axonio.reflect import ReflectClient
+from axonio.session import SessionClient
+from axonio.sync_client import SyncClientWrapper
+from axonio.transactions import TxClient
 
 log = structlog.get_logger(__name__)
 
@@ -58,7 +58,7 @@ class ClawDB:
 
     @classmethod
     def from_api_key(cls, api_key: str, endpoint: str | None = None) -> "ClawDB":
-        from clawdb._http import CLOUD_ENDPOINT
+        from axonio._http import CLOUD_ENDPOINT
 
         return cls(api_key=api_key, endpoint=endpoint or CLOUD_ENDPOINT)
 
@@ -94,7 +94,7 @@ class ClawDB:
         )
         self._session_client = SessionClient(self._core)
         self._session_client.create()
-        log.info("clawdb.connected", endpoint=self._core.base_url, agent_id=self._config.agent_id)
+        log.info("axonio.connected", endpoint=self._core.base_url, agent_id=self._config.agent_id)
 
     def disconnect(self) -> None:
         if self._session_client:
@@ -105,7 +105,7 @@ class ClawDB:
         self._session_client = None
         self._memory_client = self._branch_client = None
         self._sync_client = self._reflect_client = self._tx_client = None
-        log.info("clawdb.disconnected")
+        log.info("axonio.disconnected")
 
     def __enter__(self) -> "ClawDB":
         self.connect()

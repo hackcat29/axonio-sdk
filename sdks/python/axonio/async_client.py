@@ -5,13 +5,13 @@ from typing import Any, Awaitable, Callable
 
 import structlog
 
-from clawdb._http import AsyncHttpCore
-from clawdb.config import ClawDBConfig
-from clawdb.errors import ClawDBError
-from clawdb.memory import UUID_RE, check_ids, check_top_k, remember_payload, require_content, to_hit, to_memory
-from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncActionResult, SyncResult, SyncStatusResult, TxInfo
-from clawdb.provision import resolve_endpoint
-from clawdb.sync_client import as_dict, jobs_from, to_job
+from axonio._http import AsyncHttpCore
+from axonio.config import ClawDBConfig
+from axonio.errors import ClawDBError
+from axonio.memory import UUID_RE, check_ids, check_top_k, remember_payload, require_content, to_hit, to_memory
+from axonio.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncActionResult, SyncResult, SyncStatusResult, TxInfo
+from axonio.provision import resolve_endpoint
+from axonio.sync_client import as_dict, jobs_from, to_job
 
 log = structlog.get_logger(__name__)
 
@@ -192,7 +192,7 @@ class AsyncClawDB:
 
     @classmethod
     def from_api_key(cls, api_key: str, endpoint: str | None = None) -> "AsyncClawDB":
-        from clawdb._http import CLOUD_ENDPOINT
+        from axonio._http import CLOUD_ENDPOINT
 
         return cls(api_key=api_key, endpoint=endpoint or CLOUD_ENDPOINT)
 
@@ -220,7 +220,7 @@ class AsyncClawDB:
             timeout_ms=self._config.timeout_ms,
         )
         await self._core.open_session()
-        log.info("clawdb.async.connected", endpoint=self._core.base_url)
+        log.info("axonio.async.connected", endpoint=self._core.base_url)
 
     async def disconnect(self) -> None:
         if self._core is None:
