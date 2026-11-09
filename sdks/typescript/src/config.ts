@@ -1,3 +1,4 @@
+import { readEnv } from './env';
 import type { ClawDBConfig } from '@clawdb/types';
 
 export const DEFAULT_CONFIG: Required<ClawDBConfig> = {
@@ -78,17 +79,17 @@ export class ClawDBConfigResolver {
       return {};
     }
 
-    const timeoutRaw = readEnvString(process.env.CLAWDB_TIMEOUT_MS);
-    const tlsRaw = readEnvString(process.env.CLAWDB_TLS);
+    const timeoutRaw = readEnvString(readEnv('TIMEOUT_MS'));
+    const tlsRaw = readEnvString(readEnv('TLS'));
     const timeout = timeoutRaw == null ? undefined : Number(timeoutRaw);
 
     return {
-      endpoint: readEnvString(process.env.CLAWDB_ENDPOINT),
-      apiKey: readEnvString(process.env.CLAWDB_API_KEY),
-      agentId: readEnvString(process.env.CLAWDB_AGENT_ID),
-      workspace: readEnvString(process.env.CLAWDB_WORKSPACE),
-      role: readEnvString(process.env.CLAWDB_ROLE),
-      region: readEnvString(process.env.CLAWDB_REGION),
+      endpoint: readEnvString(readEnv('ENDPOINT')),
+      apiKey: readEnvString(readEnv('API_KEY')),
+      agentId: readEnvString(readEnv('AGENT_ID')),
+      workspace: readEnvString(readEnv('WORKSPACE')),
+      role: readEnvString(readEnv('ROLE')),
+      region: readEnvString(readEnv('REGION')),
       timeout: Number.isFinite(timeout) ? timeout : undefined,
       tls: tlsRaw == null ? undefined : tlsRaw === '1' || tlsRaw.toLowerCase() === 'true'
     };

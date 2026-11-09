@@ -1,8 +1,9 @@
 {
-  "name": "@clawdb/mcp-adapter",
+  "name": "@axonio/mcp-adapter",
   "version": "0.2.0",
   "type": "module",
   "bin": {
+    "axonio-mcp": "./dist/index.js",
     "clawdb-mcp": "./dist/index.js"
   },
   "main": "./dist/index.js",
@@ -21,9 +22,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@clawdb/sdk": "0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@axonio/sdk": "0.2.0"
   },
   "devDependencies": {
     "tsup": "^8.2.4",
@@ -31,5 +32,20 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "description": "MCP server for Axonio: persistent agent memory over stdio (Claude Desktop, Cursor, any MCP client).",
+  "homepage": "https://axonio.xyz",
+  "keywords": [
+    "mcp",
+    "axonio",
+    "agents",
+    "memory",
+    "claude",
+    "cursor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hackcat29/axonio-sdk",
+    "directory": "sdks/mcp-adapter"
   }
 }

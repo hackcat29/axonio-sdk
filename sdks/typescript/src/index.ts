@@ -1,5 +1,6 @@
 export {
   ClawDB,
+  ClawDB as Axonio,
   type ClawDBConfig,
   type MemoryOptions,
   type SearchOptions,

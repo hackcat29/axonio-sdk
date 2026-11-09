@@ -21,7 +21,8 @@ import type { ZodError } from 'zod';
  */
 export function readFromEnv(): Partial<ClawDBFileConfig> {
   const env = (key: string): string | undefined => {
-    if (typeof process !== 'undefined') return process.env[key];
+    // AXONIO_* wins over the older CLAWDB_* names.
+    if (typeof process !== 'undefined') return process.env[key.replace(/^CLAWDB_/, 'AXONIO_')] ?? process.env[key];
     return undefined;
   };
 

@@ -1,23 +1,23 @@
 {
-  "name": "@clawdb/sdk",
+  "name": "@axonio/sdk",
   "version": "0.2.0",
-  "description": "Zero-config database for AI agents.",
+  "description": "Persistent memory for AI agents: hybrid recall, branch and merge. TypeScript client for Axonio.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Claw-DB/claw-sdk",
+    "url": "https://github.com/hackcat29/axonio-sdk",
     "directory": "sdks/typescript"
   },
   "keywords": [
     "ai",
     "agents",
-    "database",
     "memory",
-    "clawdb",
+    "axonio",
+    "mcp",
     "langchain",
     "openai",
     "vercel-ai",
-    "mcp"
+    "knowledge-graph"
   ],
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -66,5 +66,6 @@
     "@vitest/coverage-v8": "^1.6.1",
     "tsup": "^8.2.4",
     "vitest": "^1.6.1"
-  }
+  },
+  "homepage": "https://axonio.xyz"
 }

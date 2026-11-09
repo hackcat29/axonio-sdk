@@ -1,3 +1,4 @@
+import { readEnv } from './env';
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, chmodSync, unlinkSync } from 'node:fs';
@@ -187,7 +188,7 @@ const channelPool = new Map<string, RawClient>();
 let serviceClientConstructor: LoadedServiceClientConstructor | undefined;
 
 function debugEnabled(): boolean {
-  return process.env.CLAWDB_DEBUG === '1';
+  return readEnv('DEBUG') === '1';
 }
 
 function debugLog(payload: Record<string, unknown>): void {
@@ -469,7 +470,7 @@ function releaseAssetCandidates(version: string): string[] {
 }
 
 function serverReleaseVersion(): string {
-  const configured = process.env.CLAWDB_SERVER_RELEASE_VERSION?.trim();
+  const configured = readEnv('SERVER_RELEASE_VERSION')?.trim();
   if (configured && configured.length > 0) {
     return configured;
   }
@@ -488,7 +489,7 @@ async function downloadFile(url: string, targetFile: string): Promise<void> {
 }
 
 function releaseBaseCandidates(version: string): string[] {
-  const configured = process.env.CLAWDB_SERVER_RELEASE_BASE_URL?.trim();
+  const configured = readEnv('SERVER_RELEASE_BASE_URL')?.trim();
   const candidates = [
     configured,
     // Prefer latest/download — picks up the new archive format (both binaries) from any future release
@@ -691,7 +692,7 @@ async function ensureLocalServerAvailable(): Promise<string> {
 }
 
 function deriveAgentId(): string {
-  const envAgentId = process.env.CLAWDB_AGENT_ID;
+  const envAgentId = readEnv('AGENT_ID');
   if (envAgentId && envAgentId.trim().length > 0) {
     return envAgentId;
   }
@@ -1083,24 +1084,24 @@ export class ClawDB extends EventEmitter {
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   static fromEnv(): ClawDB {
-    const timeoutRaw = Number(process.env.CLAWDB_TIMEOUT_MS ?? '10000');
-    const retriesRaw = Number(process.env.CLAWDB_MAX_RETRIES ?? '3');
-    const url = process.env.CLAWDB_URL?.trim();
-    const apiKey = process.env.CLAWDB_API_KEY?.trim() || undefined;
+    const timeoutRaw = Number(readEnv('TIMEOUT_MS') ?? '10000');
+    const retriesRaw = Number(readEnv('MAX_RETRIES') ?? '3');
+    const url = readEnv('URL')?.trim();
+    const apiKey = readEnv('API_KEY')?.trim() || undefined;
     return new ClawDB({
       // An API key with no URL means the hosted cloud.
       endpoint: url || (apiKey ? CLOUD_ENDPOINT : undefined),
       apiKey,
-      agentId: process.env.CLAWDB_AGENT_ID,
-      workspaceId: process.env.CLAWDB_WORKSPACE_ID,
+      agentId: readEnv('AGENT_ID'),
+      workspaceId: readEnv('WORKSPACE_ID'),
       timeoutMs: Number.isFinite(timeoutRaw) ? timeoutRaw : 10_000,
       maxRetries: Number.isFinite(retriesRaw) ? retriesRaw : 3
     });
   }
 
   static async autoProvision(config: Omit<ClawDBConfig, 'endpoint' | 'apiKey'> = {}): Promise<ClawDB> {
-    const explicitUrl = process.env.CLAWDB_URL?.trim();
-    const apiKey = process.env.CLAWDB_API_KEY?.trim();
+    const explicitUrl = readEnv('URL')?.trim();
+    const apiKey = readEnv('API_KEY')?.trim();
     if (explicitUrl) {
       // Keep the key: a self-hosted or cloud URL may need it.
       const db = new ClawDB({ ...config, endpoint: explicitUrl, apiKey: apiKey || undefined });

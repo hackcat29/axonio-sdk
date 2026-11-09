@@ -140,3 +140,27 @@ describe('HTTP transport', () => {
     expect(calls.filter((c) => c.url.pathname.includes('/v1/memories/')).map((c) => c.method)).toEqual(['GET', 'DELETE']);
   });
 });
+
+describe('AXONIO_* environment variables', () => {
+  const keys = ['AXONIO_API_KEY', 'AXONIO_URL', 'CLAWDB_API_KEY', 'CLAWDB_URL'];
+  beforeEach(() => keys.forEach((k) => delete process.env[k]));
+  afterEach(() => keys.forEach((k) => delete process.env[k]));
+
+  it('prefers AXONIO_* over CLAWDB_*', () => {
+    process.env.CLAWDB_API_KEY = 'old-key';
+    process.env.AXONIO_API_KEY = 'new-key';
+    expect(ClawDB.fromEnv().apiKey).toBe('new-key');
+  });
+
+  it('still honours the older CLAWDB_* names', () => {
+    process.env.CLAWDB_API_KEY = 'old-key';
+    const db = ClawDB.fromEnv();
+    expect(db.apiKey).toBe('old-key');
+    expect(db.endpoint).toBe(CLOUD_ENDPOINT);
+  });
+
+  it('exports Axonio as the same class as ClawDB', async () => {
+    const mod = await import('../index');
+    expect(mod.Axonio).toBe(mod.ClawDB);
+  });
+});

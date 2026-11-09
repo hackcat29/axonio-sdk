@@ -5,16 +5,21 @@ import { homedir } from 'node:os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ClawDB, type SearchHit } from '@clawdb/sdk';
+import { ClawDB, type SearchHit } from '@axonio/sdk';
+
+/** AXONIO_* wins over the older CLAWDB_* names. */
+function env(name: string): string | undefined {
+  return process.env[`AXONIO_${name}`] ?? process.env[`CLAWDB_${name}`];
+}
 
 const PACKAGE_VERSION = '0.2.0';
 /** The hosted Axonio cloud (HTTP). The SDK picks its HTTP transport for it. */
 const CLOUD_ENDPOINT = 'https://api.axonio.xyz/api/v1/gateway';
 
 function resolveClientConfig(): { endpoint?: string; apiKey?: string; agentId?: string } {
-  const explicitEndpoint = process.env.CLAWDB_URL?.trim();
-  const apiKey = process.env.CLAWDB_API_KEY?.trim();
-  const agentId = process.env.CLAWDB_AGENT_ID?.trim();
+  const explicitEndpoint = env('URL')?.trim();
+  const apiKey = env('API_KEY')?.trim();
+  const agentId = env('AGENT_ID')?.trim();
 
   if (explicitEndpoint) {
     return { endpoint: explicitEndpoint, apiKey: apiKey || undefined, agentId: agentId || undefined };
@@ -39,16 +44,16 @@ function getClaudeConfigPath(): string {
 function clawdbClaudeConfigBlock(): Record<string, unknown> {
   // With an API key in the environment, configure the hosted cloud;
   // otherwise a local clawdb-server.
-  const apiKey = process.env.CLAWDB_API_KEY?.trim();
-  const env: Record<string, string> = apiKey
-    ? { CLAWDB_API_KEY: apiKey, CLAWDB_AGENT_ID: 'claude-desktop' }
-    : { CLAWDB_ENDPOINT: 'http://localhost:50050', CLAWDB_AGENT_ID: 'claude-desktop' };
+  const apiKey = env('API_KEY')?.trim();
+  const serverEnv: Record<string, string> = apiKey
+    ? { AXONIO_API_KEY: apiKey, AXONIO_AGENT_ID: 'claude-desktop' }
+    : { AXONIO_URL: 'http://localhost:50050', AXONIO_AGENT_ID: 'claude-desktop' };
   return {
     mcpServers: {
-      clawdb: {
+      axonio: {
         command: 'npx',
-        args: ['-y', '@clawdb/mcp-adapter@latest'],
-        env
+        args: ['-y', '@axonio/mcp-adapter@latest'],
+        env: serverEnv
       }
     }
   };
@@ -97,8 +102,9 @@ function formatHits(hits: SearchHit[]): string {
 }
 
 async function main(): Promise<void> {
-  if (process.env.CLAWDB_ENDPOINT && !process.env.CLAWDB_URL) {
-    process.env.CLAWDB_URL = process.env.CLAWDB_ENDPOINT;
+  const legacyEndpoint = env('ENDPOINT');
+  if (legacyEndpoint && !env('URL')) {
+    process.env.AXONIO_URL = legacyEndpoint;
   }
 
   if (process.argv.includes('--print-config')) {
@@ -111,7 +117,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const server = new McpServer({ name: 'clawdb', version: PACKAGE_VERSION });
+  const server = new McpServer({ name: 'axonio', version: PACKAGE_VERSION });
 
   const db = new ClawDB(resolveClientConfig());
 

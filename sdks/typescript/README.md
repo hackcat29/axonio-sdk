@@ -1,11 +1,13 @@
-# @clawdb/sdk
+# @axonio/sdk
 
-Official TypeScript client for ClawDB.
+Official TypeScript client for [Axonio](https://axonio.xyz): persistent memory for AI agents.
+
+> Formerly `@clawdb/sdk`. The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
 
 ## Install
 
 ```bash
-npm install @clawdb/sdk
+npm install @axonio/sdk
 ```
 
 ## Quick Start
@@ -15,25 +17,25 @@ npm install @clawdb/sdk
 Create an API key in the dashboard, then:
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
+import { Axonio } from '@axonio/sdk';
 
 // Talks HTTPS to https://api.axonio.xyz/api/v1/gateway, which routes to your
-// workspace's own ClawDB instance. `ClawDB.fromEnv()` does the same when only
-// CLAWDB_API_KEY is set.
-const db = new ClawDB({
+// workspace's own ClawDB instance. `Axonio.fromEnv()` does the same when only
+// AXONIO_API_KEY is set.
+const db = new Axonio({
   endpoint: 'https://api.axonio.xyz/api/v1/gateway',
-  apiKey: process.env.CLAWDB_API_KEY,
+  apiKey: process.env.AXONIO_API_KEY,
 });
 ```
 
 ### Self-hosted
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
+import { Axonio } from '@axonio/sdk';
 
 // gRPC to your own clawdb-server. With no endpoint at all, the SDK downloads
 // and starts a local server for you.
-const db = new ClawDB({ endpoint: process.env.CLAWDB_URL ?? 'http://localhost:50050' });
+const db = new Axonio({ endpoint: process.env.AXONIO_URL ?? 'http://localhost:50050' });
 ```
 
 ### Then
@@ -122,9 +124,9 @@ HTTP API; a `host:port` server uses gRPC. Override with `transport: 'grpc' | 'ht
 Sessions are opened for you, last an hour, and are renewed automatically.
 
 Environment variables:
-- `CLAWDB_URL` (optional with an API key: defaults to the hosted cloud)
-- `CLAWDB_API_KEY`
-- `CLAWDB_AGENT_ID`
-- `CLAWDB_WORKSPACE`
-- `CLAWDB_ROLE`
-- `CLAWDB_TIMEOUT_MS`
+- `AXONIO_URL` (optional with an API key: defaults to the hosted cloud)
+- `AXONIO_API_KEY`
+- `AXONIO_AGENT_ID`
+- `AXONIO_WORKSPACE`
+- `AXONIO_ROLE`
+- `AXONIO_TIMEOUT_MS`

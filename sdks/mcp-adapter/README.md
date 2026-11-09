@@ -1,25 +1,27 @@
-# @clawdb/mcp-adapter
+# @axonio/mcp-adapter
 
-Model Context Protocol server for exposing ClawDB over stdio.
+Model Context Protocol server for [Axonio](https://axonio.xyz), over stdio.
+
+> Formerly `@axonio/mcp-adapter`. The `clawdb-mcp` command and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence. Tool names (`clawdb_*`) are unchanged so existing agents keep working.
 
 ## Install
 
 ```bash
-npx -y @clawdb/mcp-adapter
+npx -y @axonio/mcp-adapter
 ```
 
 ## Claude Desktop
 
 ```bash
-npx -y @clawdb/mcp-adapter --print-config
-npx -y @clawdb/mcp-adapter --install-claude
+npx -y @axonio/mcp-adapter --print-config
+npx -y @axonio/mcp-adapter --install-claude
 ```
 
 ## Environment
 
-- `CLAWDB_ENDPOINT` or `CLAWDB_URL`
-- `CLAWDB_API_KEY`
-- `CLAWDB_AGENT_ID`
+- `AXONIO_API_KEY`: connects to the hosted cloud (`https://api.axonio.xyz/api/v1/gateway`)
+- `AXONIO_URL`: a self-hosted server instead (optional)
+- `AXONIO_AGENT_ID`
 
 ## Tools
 
