@@ -7,8 +7,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ClawDB, type SearchHit } from '@clawdb/sdk';
 
-const PACKAGE_VERSION = '0.1.3';
-const CLOUD_ENDPOINT = 'https://cloud.clawdb.dev';
+const PACKAGE_VERSION = '0.2.0';
+/** The hosted Axonio cloud (HTTP). The SDK picks its HTTP transport for it. */
+const CLOUD_ENDPOINT = 'https://api.axonio.xyz/api/v1/gateway';
 
 function resolveClientConfig(): { endpoint?: string; apiKey?: string; agentId?: string } {
   const explicitEndpoint = process.env.CLAWDB_URL?.trim();
@@ -36,15 +37,18 @@ function getClaudeConfigPath(): string {
 }
 
 function clawdbClaudeConfigBlock(): Record<string, unknown> {
+  // With an API key in the environment, configure the hosted cloud;
+  // otherwise a local clawdb-server.
+  const apiKey = process.env.CLAWDB_API_KEY?.trim();
+  const env: Record<string, string> = apiKey
+    ? { CLAWDB_API_KEY: apiKey, CLAWDB_AGENT_ID: 'claude-desktop' }
+    : { CLAWDB_ENDPOINT: 'http://localhost:50050', CLAWDB_AGENT_ID: 'claude-desktop' };
   return {
     mcpServers: {
       clawdb: {
         command: 'npx',
         args: ['-y', '@clawdb/mcp-adapter@latest'],
-        env: {
-          CLAWDB_ENDPOINT: 'http://localhost:50050',
-          CLAWDB_AGENT_ID: 'claude-desktop'
-        }
+        env
       }
     }
   };
@@ -161,6 +165,9 @@ async function main(): Promise<void> {
     async ({ query, top_k, semantic }) => {
       const results = await requireDb().search(query, { topK: top_k, semantic });
       return { content: [{ type: 'text', text: formatHits(results) }] };
+    }
+  );
+
   // ── Memory CRUD ───────────────────────────────────────────────────────
   server.tool('clawdb_update_memory', 'Update an existing memory entry by ID.',
     { id: z.string(), content: z.string() },
@@ -246,8 +253,6 @@ async function main(): Promise<void> {
   server.tool('clawdb_tx_rollback', 'Roll back a transaction.',
     { tx_id: z.string() },
     async ({ tx_id }) => toMcpText({ rolled_back: await requireDb().rollbackTx(tx_id) })
-  );
-    }
   );
 
   server.tool(
@@ -337,7 +342,9 @@ async function main(): Promise<void> {
   }).prompt;
 
   if (typeof maybePromptRegistrar === 'function') {
-    maybePromptRegistrar(
+    // Called on the server: a detached call has no `this` and crashed at startup.
+    maybePromptRegistrar.call(
+      server,
       'clawdb_load_context',
       'Search memory for the current topic and format the result for system prompt injection.',
       { topic: z.string() },
@@ -346,7 +353,8 @@ async function main(): Promise<void> {
         return {
           messages: [
             {
-              role: 'system',
+              // MCP prompt messages are 'user' or 'assistant' only.
+              role: 'user',
               content: {
                 type: 'text',
                 text: `Relevant prior context:\n${formatHits(hits)}`
