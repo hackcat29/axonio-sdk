@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axonio-ros2"
+version = "0.5.0"
+description = "ROS2 SDK for Axonio: persistent, fleet-wide spatial memory for robots"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Axonio", email = "team@axonio.xyz" }]
+keywords = ["ros2", "robotics", "axonio", "memory", "amr", "navigation", "nav2", "spatial-ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = ["axonio>=0.2.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "ruff>=0.1.0"]
+
+[project.urls]
+Homepage = "https://axonio.xyz"
+Repository = "https://github.com/hackcat29/axonio-sdk"
+Documentation = "https://docs.axonio.xyz"
+
+[project.scripts]
+memory_node = "axonio_ros2.node:main"
+fleet_sync = "axonio_ros2.fleet_sync:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["axonio_ros2*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

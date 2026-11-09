@@ -1,0 +1,13 @@
+# Axonio spatial memory bridge.
+# The API key is not set here: export AXONIO_API_KEY, or pass api_key_file.
+axonio_spatial_memory_bridge:
+  ros__parameters:
+    # Leave empty for the Axonio cloud, or the URL of a self-hosted server.
+    endpoint: ""
+
+    robot_id: "amr_warehouse_01"
+    store_name: "robot-fleet-memory"
+    frame_id: "map"
+
+    sync_rate_hz: 1.0
+    local_ttl_seconds: 7200.0

@@ -1,0 +1,25 @@
+name: axonio-ros2 CI
+
+on:
+  push:
+    paths: ["sdks/ros2/**", "sdks/python/**"]
+  pull_request:
+    paths: ["sdks/ros2/**", "sdks/python/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: sdks/ros2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install ../python pytest pytest-asyncio
+      - run: pip install -e . --no-deps
+      - run: pytest
