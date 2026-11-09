@@ -204,10 +204,19 @@ class AsyncClawDB:
     def _should_resolve_endpoint(self) -> bool:
         return self._config.endpoint in ("", "http://localhost:50050")
 
+    def _apply_key_only_default(self) -> bool:
+        """An API key with no endpoint means the hosted cloud, as in the TypeScript SDK."""
+        if self._config.api_key and self._should_resolve_endpoint():
+            from axonio._http import CLOUD_ENDPOINT
+
+            self._config.endpoint = CLOUD_ENDPOINT
+            return True
+        return False
+
     async def connect(self) -> None:
         if self._core is not None:
             return
-        if self._should_resolve_endpoint():
+        if self._should_resolve_endpoint() and not self._apply_key_only_default():
             result = await resolve_endpoint()
             self._config.endpoint = result.endpoint
             if result.api_key and not self._config.api_key:

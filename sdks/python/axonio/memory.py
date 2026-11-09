@@ -31,7 +31,14 @@ def check_ids(memory_ids: list[str]) -> None:
 
 def to_memory(m: Any) -> MemoryRecord:
     m = m if isinstance(m, dict) else {}
-    return MemoryRecord(id=str(m.get("id", "")), content=str(m.get("content", "")), memory_type=str(m.get("memory_type", "")), tags=list(m.get("tags") or []))
+    return MemoryRecord(
+        id=str(m.get("id", "")),
+        content=str(m.get("content", "")),
+        memory_type=str(m.get("memory_type", "")),
+        tags=list(m.get("tags") or []),
+        created_at=str(m.get("created_at") or ""),
+        updated_at=str(m.get("updated_at") or ""),
+    )
 
 
 def to_hit(h: Any) -> SearchResult:

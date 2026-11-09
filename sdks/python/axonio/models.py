@@ -14,6 +14,8 @@ class MemoryRecord(BaseModel):
     content: str = ""
     memory_type: str = ""
     tags: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
 
 
 class SearchResult(BaseModel):

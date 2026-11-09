@@ -58,3 +58,26 @@ async def test_async_connect_auto_resolves_local_endpoint() -> None:
         await db.connect()
     assert db._config.endpoint == "http://localhost:50050"
     assert db._core is not None and db._core.base_url == "http://localhost:8080"
+
+
+def test_sync_client_with_only_an_api_key_uses_the_cloud(monkeypatch) -> None:
+    for name in ("AXONIO_URL", "AXONIO_ENDPOINT", "CLAWDB_ENDPOINT", "CLAWDB_URL", "AXONIO_API_KEY", "CLAWDB_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    db = ClawDB(api_key="ck_live_x")
+    with patch("axonio.client.resolve_endpoint") as resolve, \
+         patch("axonio.client.HttpCore.open_session", return_value={"token": "t"}):
+        db.connect()
+    resolve.assert_not_called()
+    assert db._config.endpoint == CLOUD_ENDPOINT
+
+
+@pytest.mark.asyncio
+async def test_async_client_with_only_an_api_key_uses_the_cloud(monkeypatch) -> None:
+    for name in ("AXONIO_URL", "AXONIO_ENDPOINT", "CLAWDB_ENDPOINT", "CLAWDB_URL", "AXONIO_API_KEY", "CLAWDB_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    db = AsyncClawDB(api_key="ck_live_x")
+    with patch("axonio.async_client.resolve_endpoint") as resolve, \
+         patch("axonio.async_client.AsyncHttpCore.open_session", return_value={"token": "t"}):
+        await db.connect()
+    resolve.assert_not_called()
+    assert db._config.endpoint == CLOUD_ENDPOINT

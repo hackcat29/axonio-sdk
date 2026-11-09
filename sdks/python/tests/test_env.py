@@ -49,3 +49,12 @@ async def test_resolve_endpoint_reads_legacy_names(monkeypatch):
 def test_axonio_names_are_the_same_classes():
     assert Axonio is ClawDB
     assert AsyncAxonio is AsyncClawDB
+
+
+def test_memory_records_carry_their_timestamps() -> None:
+    from axonio.memory import to_memory
+
+    record = to_memory({"id": "m1", "content": "c", "memory_type": "Semantic", "tags": ["a"], "created_at": "2026-11-09T23:41:51Z", "updated_at": "2026-11-10T00:00:00Z"})
+    assert record.created_at == "2026-11-09T23:41:51Z"
+    assert record.updated_at == "2026-11-10T00:00:00Z"
+    assert to_memory({"id": "m2"}).created_at == ""

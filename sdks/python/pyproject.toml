@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "axonio"
-version = "0.2.0"
+version = "0.2.1"
 description = "Persistent memory for AI agents: hybrid recall, branch and merge. Python client for Axonio."
 readme = "README.md"
 requires-python = ">=3.10"
