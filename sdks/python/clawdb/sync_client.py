@@ -1,171 +1,83 @@
-"""Sync SyncClientWrapper and ReflectClient."""
+"""Sync and reflect clients for the synchronous ClawDB client."""
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
-from clawdb._transport import make_metadata, with_retry
-from clawdb.errors import ClawDBError, ClawDBTimeoutError
+from clawdb._http import HttpCore
+from clawdb.errors import ClawDBTimeoutError
 from clawdb.models import ReflectJob, SyncActionResult, SyncResult, SyncStatusResult
 
 
+def to_job(value: Any) -> ReflectJob:
+    v = value if isinstance(value, dict) else {}
+    return ReflectJob(
+        job_id=str(v.get("job_id") or v.get("id") or ""),
+        status=str(v.get("status") or ""),
+        message=str(v.get("message") or ""),
+        skipped=bool(v.get("skipped", False)),
+        request_id=str(v.get("request_id") or ""),
+    )
+
+
+def jobs_from(value: Any) -> list[ReflectJob]:
+    items = value.get("jobs") if isinstance(value, dict) else value
+    return [to_job(i) for i in items] if isinstance(items, list) else []
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {"items": value}
+
+
 class SyncClientWrapper:
-    """Wraps ClawDB sync gRPC methods."""
-
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(self._session.token, self._api_key)
+    def __init__(self, core: HttpCore) -> None:
+        self._core = core
 
     def sync(self) -> SyncResult:
-        def _call() -> SyncResult:
-            try:
-                resp = self._stub.Sync({}, metadata=self._meta())
-                return SyncResult.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return SyncResult.model_validate(self._core.call("Sync"))
 
     def push(self) -> SyncActionResult:
-        def _call() -> SyncActionResult:
-            try:
-                resp = self._stub.PushSync({}, metadata=self._meta())
-                return SyncActionResult.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return SyncActionResult.model_validate(self._core.call("PushSync"))
 
     def pull(self) -> SyncActionResult:
-        def _call() -> SyncActionResult:
-            try:
-                resp = self._stub.PullSync({}, metadata=self._meta())
-                return SyncActionResult.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return SyncActionResult.model_validate(self._core.call("PullSync"))
 
     def reconcile(self) -> SyncActionResult:
-        def _call() -> SyncActionResult:
-            try:
-                resp = self._stub.ReconcileSync({}, metadata=self._meta())
-                return SyncActionResult.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return SyncActionResult.model_validate(self._core.call("ReconcileSync"))
 
     def status(self) -> SyncStatusResult:
-        def _call() -> SyncStatusResult:
-            try:
-                resp = self._stub.SyncStatus({}, metadata=self._meta())
-                return SyncStatusResult.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return SyncStatusResult.model_validate(self._core.call("SyncStatus"))
 
 
 class ReflectClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(self._session.token, self._api_key)
+    def __init__(self, core: HttpCore) -> None:
+        self._core = core
 
     def trigger(self) -> ReflectJob:
-        def _call() -> ReflectJob:
-            try:
-                resp = self._stub.Reflect({}, metadata=self._meta())
-                return ReflectJob.model_validate(_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return to_job(self._core.call("Reflect"))
 
     def get_job(self, job_id: str) -> ReflectJob:
-        def _call() -> ReflectJob:
-            try:
-                resp = self._stub.ReflectGetJob({"job_id": job_id}, metadata=self._meta())
-                d = _to_dict(resp)
-                inner = json.loads(d.get("json", "{}") or "{}")
-                return ReflectJob.model_validate(inner)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return to_job(self._core.call("ReflectGetJob", {"job_id": job_id}).get("json"))
 
     def list_jobs(self, agent_id: str, *, status: str = "", limit: int = 20, offset: int = 0) -> list[ReflectJob]:
-        def _call() -> list[ReflectJob]:
-            try:
-                resp = self._stub.ReflectListJobs(
-                    {"agent_id": agent_id, "status": status, "limit": limit, "offset": offset},
-                    metadata=self._meta(),
-                )
-                d = _to_dict(resp)
-                items = json.loads(d.get("json", "[]") or "[]")
-                if isinstance(items, list):
-                    return [ReflectJob.model_validate(i) for i in items]
-                return []
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        payload = {"agent_id": agent_id, "status": status, "limit": limit, "offset": offset}
+        return jobs_from(self._core.call("ReflectListJobs", payload).get("json"))
 
     def get_facts(self, agent_id: str) -> dict[str, Any]:
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.ReflectGetFacts({"agent_id": agent_id}, metadata=self._meta())
-                d = _to_dict(resp)
-                return json.loads(d.get("json", "{}") or "{}")
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return as_dict(self._core.call("ReflectGetFacts", {"agent_id": agent_id}).get("json"))
 
     def get_preferences(self, agent_id: str) -> dict[str, Any]:
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.ReflectGetPreferences({"agent_id": agent_id}, metadata=self._meta())
-                d = _to_dict(resp)
-                return json.loads(d.get("json", "{}") or "{}")
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return as_dict(self._core.call("ReflectGetPreferences", {"agent_id": agent_id}).get("json"))
 
     def get_contradictions(self, agent_id: str) -> dict[str, Any]:
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.ReflectGetContradictions({"agent_id": agent_id}, metadata=self._meta())
-                d = _to_dict(resp)
-                return json.loads(d.get("json", "{}") or "{}")
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return as_dict(self._core.call("ReflectGetContradictions", {"agent_id": agent_id}).get("json"))
 
     def resolve_contradiction(self, agent_id: str, contradiction_id: str, *, strategy: str = "", merged_value_json: str = "") -> dict[str, Any]:
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.ReflectResolveContradiction(
-                    {"agent_id": agent_id, "contradiction_id": contradiction_id, "strategy": strategy, "merged_value_json": merged_value_json},
-                    metadata=self._meta(),
-                )
-                d = _to_dict(resp)
-                return json.loads(d.get("json", "{}") or "{}")
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
+        import json
 
-        return with_retry(_call)
+        merged = json.loads(merged_value_json) if merged_value_json else None
+        payload = {"agent_id": agent_id, "contradiction_id": contradiction_id, "strategy": strategy, "merged_value": merged}
+        return as_dict(self._core.call("ReflectResolveContradiction", payload).get("json"))
 
     def wait_for_completion(self, job_id: str, *, poll_interval_s: float = 2.0, timeout_s: float = 60.0) -> ReflectJob:
         deadline = time.monotonic() + timeout_s
@@ -175,14 +87,3 @@ class ReflectClient:
                 return job
             time.sleep(poll_interval_s)
         raise ClawDBTimeoutError("Reflect job timed out", timeout_ms=int(timeout_s * 1000))
-
-
-def _to_dict(msg: Any) -> dict[str, Any]:
-    if isinstance(msg, dict):
-        return msg
-    try:
-        from google.protobuf.json_format import MessageToDict
-        return MessageToDict(msg, preserving_proto_field_name=True)
-    except Exception:
-        return {}
-

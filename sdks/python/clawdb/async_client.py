@@ -1,315 +1,173 @@
 """Async ClawDB client and async sub-clients."""
 from __future__ import annotations
 
-import asyncio
-import json
-import re
-from typing import Any, Callable, TypeVar
+from typing import Any, Awaitable, Callable
 
 import structlog
-from tenacity import (
-    AsyncRetrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
-from clawdb._transport import create_async_channel, make_metadata
-from clawdb.branches import BranchClient
+from clawdb._http import AsyncHttpCore
 from clawdb.config import ClawDBConfig
-from clawdb.errors import ClawDBError, ClawDBRateLimitError, ClawDBUnavailableError, ClawDBValidationError
-from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncResult, TxInfo
+from clawdb.errors import ClawDBError
+from clawdb.memory import UUID_RE, check_ids, check_top_k, remember_payload, require_content, to_hit, to_memory
+from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, ReflectJob, SearchResult, SyncActionResult, SyncResult, SyncStatusResult, TxInfo
 from clawdb.provision import resolve_endpoint
+from clawdb.sync_client import as_dict, jobs_from, to_job
 
 log = structlog.get_logger(__name__)
-T = TypeVar("T")
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
-
-
-def _to_dict(msg: Any) -> dict[str, Any]:
-    if isinstance(msg, dict):
-        return msg
-    try:
-        from google.protobuf.json_format import MessageToDict
-        return MessageToDict(msg, preserving_proto_field_name=True)
-    except Exception:
-        return {}
-
-
-async def _with_async_retry(fn: Callable[[], Any]) -> Any:
-    """Retry on UNAVAILABLE with exponential backoff; honour Retry-After on rate limit."""
-    async for attempt in AsyncRetrying(
-        retry=retry_if_exception_type(ClawDBUnavailableError),
-        wait=wait_exponential(multiplier=0.5, min=0.5, max=30),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    ):
-        with attempt:
-            try:
-                return await fn()
-            except ClawDBRateLimitError as exc:
-                wait_s = exc.retry_after_ms / 1000.0
-                log.warning("rate_limited", retry_after_s=wait_s)
-                await asyncio.sleep(wait_s)
-                return await fn()
-            except ClawDBError:
-                raise
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-
-def _load_async_stub(channel: Any) -> Any:
-    try:
-        from clawdb._proto import clawdb_pb2_grpc  # type: ignore[import]
-        return clawdb_pb2_grpc.ClawDBServiceStub(channel)
-    except ImportError:
-        from clawdb._mock_stub import MockStub
-        return MockStub()
 
 
 class AsyncMemoryClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(getattr(self._session, "token", None), self._api_key)
+    def __init__(self, core: AsyncHttpCore) -> None:
+        self._core = core
 
     async def remember(self, content: str, *, memory_type: str = "context", tags: list[str] | None = None, metadata: dict[str, Any] | None = None, ttl_days: int | None = None) -> str:
-        if not content or not content.strip():
-            raise ClawDBValidationError("content must be a non-empty string", field="content")
-
-        async def _call() -> str:
-            resp = await self._stub.Remember(
-                {"content": content, "memory_type": memory_type, "tags": tags or [], "metadata": json.dumps(metadata or {}), "ttl_days": ttl_days or 0},
-                metadata=self._meta(),
-            )
-            return _to_dict(resp).get("memory_id", "")
-
-        return await _with_async_retry(_call)
+        require_content(content)
+        return str((await self._core.call("Remember", remember_payload(content, memory_type, tags, metadata))).get("memory_id", ""))
 
     async def search(self, query: str, *, top_k: int = 5, semantic: bool = True, filter: dict[str, Any] | None = None, alpha: float = 0.7) -> list[SearchResult]:
-        if top_k > 100:
-            raise ClawDBValidationError("top_k cannot exceed 100", field="top_k", constraint="<=100")
-
-        async def _call() -> list[SearchResult]:
-            resp = await self._stub.Search(
-                {"query": query, "top_k": top_k, "semantic": semantic, "filter_json": json.dumps(filter or {}), "alpha": alpha},
-                metadata=self._meta(),
-            )
-            data = _to_dict(resp)
-            return [SearchResult.model_validate(r) for r in data.get("results", [])]
-
-        return await _with_async_retry(_call)
+        check_top_k(top_k)
+        reply = await self._core.call("Search", {"query": query, "top_k": top_k, "semantic": semantic})
+        return [to_hit(h) for h in reply.get("hits", [])]
 
     async def recall(self, memory_ids: list[str]) -> list[MemoryRecord]:
-        if not memory_ids:
-            raise ClawDBValidationError("memory_ids must be non-empty", field="memory_ids")
-        for mid in memory_ids:
-            if not UUID_RE.match(mid):
-                raise ClawDBValidationError(f"Invalid UUID: {mid}", field="memory_ids")
+        check_ids(memory_ids)
+        return [to_memory(await self._core.call("GetMemory", {"memory_id": mid})) for mid in memory_ids]
 
-        async def _call() -> list[MemoryRecord]:
-            resp = await self._stub.Recall({"memory_ids": memory_ids}, metadata=self._meta())
-            data = _to_dict(resp)
-            return [MemoryRecord.model_validate(m) for m in data.get("memories", [])]
-
-        return await _with_async_retry(_call)
+    async def update(self, memory_id: str, content: str) -> bool:
+        require_content(content)
+        return bool((await self._core.call("UpdateMemory", {"memory_id": memory_id, "content": content})).get("updated"))
 
     async def forget(self, memory_id: str) -> None:
-        async def _call() -> None:
-            await self._stub.Forget({"memory_id": memory_id, "soft_delete": True}, metadata=self._meta())
+        await self._core.call("DeleteMemory", {"memory_id": memory_id})
 
-        await _with_async_retry(_call)
+    async def delete(self, memory_id: str) -> bool:
+        return bool((await self._core.call("DeleteMemory", {"memory_id": memory_id})).get("deleted"))
 
     async def list(self, *, memory_type: str | None = None, limit: int = 50, offset: int = 0) -> list[MemoryRecord]:
-        async def _call() -> list[MemoryRecord]:
-            resp = await self._stub.ListMemories({"memory_type": memory_type or "", "limit": limit, "offset": offset}, metadata=self._meta())
-            data = _to_dict(resp)
-            return [MemoryRecord.model_validate(m) for m in data.get("memories", [])]
-
-        return await _with_async_retry(_call)
+        reply = await self._core.call("ListMemories", {"type": memory_type or "", "limit": limit})
+        return [to_memory(m) for m in reply.get("memories", [])]
 
 
 class AsyncBranchClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "", db_factory: Any = None) -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
+    def __init__(self, core: AsyncHttpCore, db_factory: Callable[[], Any] | None = None) -> None:
+        self._core = core
         self._db_factory = db_factory
 
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(getattr(self._session, "token", None), self._api_key)
+    async def _branch_id(self, ref: str) -> str:
+        """Accepts a branch id, a name, or "trunk"/"" for the trunk branch."""
+        if ref and UUID_RE.match(ref):
+            return ref
+        if not ref or ref == "trunk":
+            return str((await self._core.call("GetTrunkBranch")).get("branch_id", ""))
+        return str((await self._core.call("GetBranchByName", {"name": ref})).get("branch_id", ""))
 
     async def fork(self, name: str, *, parent: str | None = None, description: str | None = None) -> BranchInfo:
-        async def _call() -> BranchInfo:
-            resp = await self._stub.Fork({"name": name, "parent": parent or "trunk", "description": description or ""}, metadata=self._meta())
-            return BranchInfo.model_validate(_to_dict(resp).get("branch", {}))
+        """Creates branch `name` from `parent` (id or name; default trunk)."""
+        payload: dict[str, Any] = {"name": name}
+        if parent and parent != "trunk":
+            payload["from"] = await self._branch_id(parent)
+        reply = await self._core.call("Branch", payload)
+        return BranchInfo(branch_id=reply.get("branch_id", ""), name=reply.get("name") or name)
 
-        return await _with_async_retry(_call)
+    async def list(self) -> list[BranchInfo]:
+        return [BranchInfo.model_validate(b) for b in (await self._core.call("ListBranches")).get("branches", [])]
 
-    async def diff(self, branch_a: str, branch_b: str) -> dict[str, Any]:
-        async def _call() -> dict[str, Any]:
-            resp = await self._stub.DiffBranches({"branch_a": branch_a, "branch_b": branch_b}, metadata=self._meta())
-            return _to_dict(resp)
-
-        return await _with_async_retry(_call)
+    async def diff(self, branch_a: str, branch_b: str = "trunk") -> dict[str, Any]:
+        reply = await self._core.call("Diff", {"branch_id": await self._branch_id(branch_a), "target": branch_b})
+        return DiffResult.model_validate(reply).model_dump()
 
     async def merge(self, source: str, *, into: str = "trunk", strategy: str = "union") -> dict[str, Any]:
-        async def _call() -> dict[str, Any]:
-            resp = await self._stub.Merge({"source": source, "into": into, "strategy": strategy}, metadata=self._meta())
-            return _to_dict(resp)
-
-        return await _with_async_retry(_call)
+        reply = await self._core.call("Merge", {"source": await self._branch_id(source), "target": into, "strategy": strategy})
+        return MergeResult.model_validate(reply).model_dump()
 
     async def discard(self, name: str) -> None:
-        async def _call() -> None:
-            await self._stub.DiscardBranch({"name": name}, metadata=self._meta())
+        """Discards a branch by id or name."""
+        await self._core.call("DiscardBranch", {"branch_id": await self._branch_id(name)})
 
-        await _with_async_retry(_call)
-
-    async def simulate(self, name: str, fn: Any) -> tuple[Any, dict[str, Any]]:
-        sandbox_name = f"sandbox-{name}-sim"
-        sandbox = await self.fork(sandbox_name, parent=name)
+    async def simulate(self, name: str, fn: Callable[[Any], Awaitable[Any]]) -> tuple[Any, dict[str, Any]]:
+        """Runs `fn(db)` against a throwaway branch of `name` and returns its
+        result with the sandbox's diff against `name`. The sandbox is always
+        discarded."""
+        sandbox = await self.fork(f"sandbox-{name}-sim", parent=name)
         db = self._db_factory() if self._db_factory else None
         try:
             result = await fn(db)
-            resp = await self._stub.SimulateEvaluate({"branch_id": sandbox.id, "parent_id": sandbox.parent_id or "trunk"}, metadata=self._meta())
-            evaluation = _to_dict(resp)
-            await self.discard(sandbox.id)
+            evaluation = await self.diff(sandbox.branch_id, name)
             return result, evaluation
-        except Exception:
+        finally:
             try:
-                await self.discard(sandbox.id)
-            except Exception:
+                await self._core.call("DiscardBranch", {"branch_id": sandbox.branch_id})
+            except ClawDBError:
                 pass
-            raise
 
 
 class AsyncSyncClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(getattr(self._session, "token", None), self._api_key)
-
-    async def push(self) -> SyncResult:
-        async def _call() -> SyncResult:
-            resp = await self._stub.PushSync({}, metadata=self._meta())
-            return SyncResult.model_validate(_to_dict(resp))
-
-        return await _with_async_retry(_call)
-
-    async def pull(self) -> SyncResult:
-        async def _call() -> SyncResult:
-            resp = await self._stub.PullSync({}, metadata=self._meta())
-            return SyncResult.model_validate(_to_dict(resp))
-
-        return await _with_async_retry(_call)
-
-    async def reconcile(self) -> SyncResult:
-        async def _call() -> SyncResult:
-            resp = await self._stub.ReconcileSync({}, metadata=self._meta())
-            return SyncResult.model_validate(_to_dict(resp))
-
-        return await _with_async_retry(_call)
-
-    async def status(self) -> SyncResult:
-        async def _call() -> SyncResult:
-            resp = await self._stub.SyncStatus({}, metadata=self._meta())
-            return SyncResult.model_validate(_to_dict(resp))
-
-        return await _with_async_retry(_call)
+    def __init__(self, core: AsyncHttpCore) -> None:
+        self._core = core
 
     async def sync(self) -> SyncResult:
-        await self.push()
-        return await self.pull()
+        return SyncResult.model_validate(await self._core.call("Sync"))
+
+    async def push(self) -> SyncActionResult:
+        return SyncActionResult.model_validate(await self._core.call("PushSync"))
+
+    async def pull(self) -> SyncActionResult:
+        return SyncActionResult.model_validate(await self._core.call("PullSync"))
+
+    async def reconcile(self) -> SyncActionResult:
+        return SyncActionResult.model_validate(await self._core.call("ReconcileSync"))
+
+    async def status(self) -> SyncStatusResult:
+        return SyncStatusResult.model_validate(await self._core.call("SyncStatus"))
 
 
 class AsyncReflectClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(getattr(self._session, "token", None), self._api_key)
+    def __init__(self, core: AsyncHttpCore) -> None:
+        self._core = core
 
     async def trigger(self) -> ReflectJob:
-        async def _call() -> ReflectJob:
-            resp = await self._stub.Reflect({}, metadata=self._meta())
-            return ReflectJob.model_validate(_to_dict(resp))
-
-        return await _with_async_retry(_call)
+        return to_job(await self._core.call("Reflect"))
 
     async def get_job(self, job_id: str) -> ReflectJob:
-        async def _call() -> ReflectJob:
-            resp = await self._stub.ReflectGetJob({"job_id": job_id}, metadata=self._meta())
-            return ReflectJob.model_validate(_to_dict(resp))
+        return to_job((await self._core.call("ReflectGetJob", {"job_id": job_id})).get("json"))
 
-        return await _with_async_retry(_call)
+    async def list_jobs(self, agent_id: str, *, status: str = "", limit: int = 20, offset: int = 0) -> list[ReflectJob]:
+        payload = {"agent_id": agent_id, "status": status, "limit": limit, "offset": offset}
+        return jobs_from((await self._core.call("ReflectListJobs", payload)).get("json"))
 
-    async def get_facts(self, agent_id: str) -> dict:
-        async def _call() -> dict:
-            resp = await self._stub.ReflectGetFacts({"agent_id": agent_id}, metadata=self._meta())
-            return _to_dict(resp)
+    async def get_facts(self, agent_id: str) -> dict[str, Any]:
+        return as_dict((await self._core.call("ReflectGetFacts", {"agent_id": agent_id})).get("json"))
 
-        return await _with_async_retry(_call)
+    async def get_preferences(self, agent_id: str) -> dict[str, Any]:
+        return as_dict((await self._core.call("ReflectGetPreferences", {"agent_id": agent_id})).get("json"))
 
-    async def get_preferences(self, agent_id: str) -> dict:
-        async def _call() -> dict:
-            resp = await self._stub.ReflectGetPreferences({"agent_id": agent_id}, metadata=self._meta())
-            return _to_dict(resp)
-
-        return await _with_async_retry(_call)
-
-    async def get_contradictions(self, agent_id: str) -> dict:
-        async def _call() -> dict:
-            resp = await self._stub.ReflectGetContradictions({"agent_id": agent_id}, metadata=self._meta())
-            return _to_dict(resp)
-
-        return await _with_async_retry(_call)
+    async def get_contradictions(self, agent_id: str) -> dict[str, Any]:
+        return as_dict((await self._core.call("ReflectGetContradictions", {"agent_id": agent_id})).get("json"))
 
 
 class AsyncTxClient:
-    def __init__(self, stub: Any, session: Any, api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(getattr(self._session, "token", None), self._api_key)
+    def __init__(self, core: AsyncHttpCore) -> None:
+        self._core = core
 
     async def begin(self) -> TxInfo:
-        async def _call() -> TxInfo:
-            resp = await self._stub.BeginTx({}, metadata=self._meta())
-            return TxInfo.model_validate(_to_dict(resp))
-        return await _with_async_retry(_call)
+        return TxInfo.model_validate(await self._core.call("BeginTx"))
 
     async def remember(self, tx_id: str, content: str) -> str:
-        async def _call() -> str:
-            resp = await self._stub.TxRemember({"tx_id": tx_id, "content": content}, metadata=self._meta())
-            return _to_dict(resp).get("memory_id", "")
-        return await _with_async_retry(_call)
+        return str((await self._core.call("TxRemember", {"tx_id": tx_id, "content": content})).get("memory_id", ""))
+
+    async def remember_typed(self, tx_id: str, content: str, *, type: str = "context", tags: list[str] | None = None, metadata: dict[str, Any] | None = None) -> str:
+        payload = {"tx_id": tx_id, "content": content, "type": type, "tags": tags or [], "metadata": metadata or {}}
+        return str((await self._core.call("TxRememberTyped", payload)).get("memory_id", ""))
 
     async def commit(self, tx_id: str) -> bool:
-        async def _call() -> bool:
-            resp = await self._stub.CommitTx({"tx_id": tx_id}, metadata=self._meta())
-            return bool(_to_dict(resp).get("committed"))
-        return await _with_async_retry(_call)
+        return bool((await self._core.call("CommitTx", {"tx_id": tx_id})).get("committed"))
 
     async def rollback(self, tx_id: str) -> bool:
-        async def _call() -> bool:
-            resp = await self._stub.RollbackTx({"tx_id": tx_id}, metadata=self._meta())
-            return bool(_to_dict(resp).get("rolled_back"))
-        return await _with_async_retry(_call)
+        return bool((await self._core.call("RollbackTx", {"tx_id": tx_id})).get("rolled_back"))
 
 
 class AsyncClawDB:
-    """Fully async ClawDB client."""
+    """Fully async ClawDB client over the server's HTTP API."""
 
     def __init__(self, *, endpoint: str | None = None, api_key: str | None = None, agent_id: str | None = None, **kwargs: Any) -> None:
         overrides: dict[str, Any] = {}
@@ -321,9 +179,7 @@ class AsyncClawDB:
             overrides["agent_id"] = agent_id
         overrides.update(kwargs)
         self._config = ClawDBConfig(**overrides)
-        self._channel: Any = None
-        self._stub: Any = None
-        self._session: Any = None
+        self._core: AsyncHttpCore | None = None
         self._memory_client: AsyncMemoryClient | None = None
         self._branch_client: AsyncBranchClient | None = None
         self._sync_client: AsyncSyncClient | None = None
@@ -335,38 +191,49 @@ class AsyncClawDB:
         return cls()
 
     @classmethod
-    def from_api_key(cls, api_key: str, endpoint: str) -> "AsyncClawDB":
-        return cls(api_key=api_key, endpoint=endpoint)
+    def from_api_key(cls, api_key: str, endpoint: str | None = None) -> "AsyncClawDB":
+        from clawdb._http import CLOUD_ENDPOINT
+
+        return cls(api_key=api_key, endpoint=endpoint or CLOUD_ENDPOINT)
 
     @classmethod
     async def auto_provision(cls) -> "AsyncClawDB":
         result = await resolve_endpoint()
         return cls(endpoint=result.endpoint, api_key=result.api_key)
 
-    def _should_resolve_local_endpoint(self) -> bool:
-        return not self._config.api_key and self._config.endpoint in ("", "http://localhost:50050")
+    def _should_resolve_endpoint(self) -> bool:
+        return self._config.endpoint in ("", "http://localhost:50050")
 
     async def connect(self) -> None:
-        if self._should_resolve_local_endpoint():
+        if self._core is not None:
+            return
+        if self._should_resolve_endpoint():
             result = await resolve_endpoint()
             self._config.endpoint = result.endpoint
-            if result.api_key:
+            if result.api_key and not self._config.api_key:
                 self._config.api_key = result.api_key
-        self._channel = create_async_channel(self._config)
-        self._stub = _load_async_stub(self._channel)
-        from clawdb.session import SessionClient
-        self._session = SessionClient(self._stub, agent_id=self._config.agent_id, role=self._config.role, api_key=self._config.api_key)
-        # Session creation in async context runs in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._session.create)
-        log.info("clawdb.async.connected", endpoint=self._config.endpoint)
+        self._core = AsyncHttpCore(
+            self._config.endpoint,
+            api_key=self._config.api_key,
+            agent_id=self._config.agent_id,
+            role=self._config.role,
+            timeout_ms=self._config.timeout_ms,
+        )
+        await self._core.open_session()
+        log.info("clawdb.async.connected", endpoint=self._core.base_url)
 
     async def disconnect(self) -> None:
-        if self._session:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._session.revoke)
-        if self._channel:
-            await self._channel.close()
+        if self._core is None:
+            return
+        if self._core.session_id:
+            try:
+                await self._core.call("RevokeSession", {"session_id": self._core.session_id})
+            except ClawDBError:
+                pass
+        await self._core.close()
+        self._core = None
+        self._memory_client = self._branch_client = None
+        self._sync_client = self._reflect_client = self._tx_client = None
 
     async def __aenter__(self) -> "AsyncClawDB":
         await self.connect()
@@ -375,32 +242,40 @@ class AsyncClawDB:
     async def __aexit__(self, *args: Any) -> None:
         await self.disconnect()
 
+    def _require_core(self) -> AsyncHttpCore:
+        if self._core is None:
+            raise RuntimeError("Not connected. Await connect() or use 'async with'.")
+        return self._core
+
+    async def health(self) -> dict[str, Any]:
+        return await self._require_core().call("Health")
+
     @property
     def memory(self) -> AsyncMemoryClient:
         if self._memory_client is None:
-            self._memory_client = AsyncMemoryClient(self._stub, self._session, self._config.api_key)
+            self._memory_client = AsyncMemoryClient(self._require_core())
         return self._memory_client
 
     @property
     def branches(self) -> AsyncBranchClient:
         if self._branch_client is None:
-            self._branch_client = AsyncBranchClient(self._stub, self._session, self._config.api_key, lambda: self)
+            self._branch_client = AsyncBranchClient(self._require_core(), lambda: self)
         return self._branch_client
 
     @property
     def sync(self) -> AsyncSyncClient:
         if self._sync_client is None:
-            self._sync_client = AsyncSyncClient(self._stub, self._session, self._config.api_key)
+            self._sync_client = AsyncSyncClient(self._require_core())
         return self._sync_client
 
     @property
     def reflect(self) -> AsyncReflectClient:
         if self._reflect_client is None:
-            self._reflect_client = AsyncReflectClient(self._stub, self._session, self._config.api_key)
+            self._reflect_client = AsyncReflectClient(self._require_core())
         return self._reflect_client
 
     @property
     def tx(self) -> AsyncTxClient:
         if self._tx_client is None:
-            self._tx_client = AsyncTxClient(self._stub, self._session, self._config.api_key)
+            self._tx_client = AsyncTxClient(self._require_core())
         return self._tx_client

@@ -6,7 +6,7 @@ from typing import Any
 
 import structlog
 
-from clawdb._transport import create_channel
+from clawdb._http import HttpCore
 from clawdb.branches import BranchClient
 from clawdb.config import ClawDBConfig
 from clawdb.memory import MemoryClient
@@ -18,19 +18,14 @@ from clawdb.transactions import TxClient
 
 log = structlog.get_logger(__name__)
 
-# Lazy stub import — stubs are generated at build time; fall back to a mock
-# transport stub during development / testing without a live server.
-def _load_stub(channel: Any) -> Any:
-    try:
-        from clawdb._proto import clawdb_pb2_grpc  # type: ignore[import]
-        return clawdb_pb2_grpc.ClawDBServiceStub(channel)
-    except ImportError:
-        from clawdb._mock_stub import MockStub
-        return MockStub()
-
 
 class ClawDB:
-    """Synchronous ClawDB client."""
+    """Synchronous ClawDB client.
+
+    Talks to the server's HTTP API: the hosted cloud
+    (https://api.axonio.xyz/api/v1/gateway, the default when only an API key
+    is set) or a self-hosted clawdb-server.
+    """
 
     def __init__(
         self,
@@ -49,8 +44,7 @@ class ClawDB:
             overrides["agent_id"] = agent_id
         overrides.update(kwargs)
         self._config = ClawDBConfig(**overrides)
-        self._channel: Any = None
-        self._stub: Any = None
+        self._core: HttpCore | None = None
         self._session_client: SessionClient | None = None
         self._memory_client: MemoryClient | None = None
         self._branch_client: BranchClient | None = None
@@ -63,45 +57,54 @@ class ClawDB:
         return cls()
 
     @classmethod
-    def from_api_key(cls, api_key: str, endpoint: str) -> "ClawDB":
-        return cls(api_key=api_key, endpoint=endpoint)
+    def from_api_key(cls, api_key: str, endpoint: str | None = None) -> "ClawDB":
+        from clawdb._http import CLOUD_ENDPOINT
+
+        return cls(api_key=api_key, endpoint=endpoint or CLOUD_ENDPOINT)
 
     @classmethod
     def auto_provision(cls) -> "ClawDB":
         try:
             result = asyncio.run(resolve_endpoint())
         except RuntimeError:
-            # If we're already on an event loop, fall back to env defaults.
+            # Already on an event loop: fall back to env defaults.
             return cls.from_env()
-
         return cls(endpoint=result.endpoint, api_key=result.api_key)
 
-    def _should_resolve_local_endpoint(self) -> bool:
-        return not self._config.api_key and self._config.endpoint in ("", "http://localhost:50050")
+    def _should_resolve_endpoint(self) -> bool:
+        return self._config.endpoint in ("", "http://localhost:50050")
 
     def connect(self) -> None:
-        if self._should_resolve_local_endpoint():
+        if self._core is not None:
+            return
+        if self._should_resolve_endpoint():
             try:
                 result = asyncio.run(resolve_endpoint())
                 self._config.endpoint = result.endpoint
-                if result.api_key:
+                if result.api_key and not self._config.api_key:
                     self._config.api_key = result.api_key
             except RuntimeError:
                 pass
-        self._channel = create_channel(self._config)
-        self._stub = _load_stub(self._channel)
-        self._session_client = SessionClient(self._stub, agent_id=self._config.agent_id, role=self._config.role, api_key=self._config.api_key)
+        self._core = HttpCore(
+            self._config.endpoint,
+            api_key=self._config.api_key,
+            agent_id=self._config.agent_id,
+            role=self._config.role,
+            timeout_ms=self._config.timeout_ms,
+        )
+        self._session_client = SessionClient(self._core)
         self._session_client.create()
-        log.info("clawdb.connected", endpoint=self._config.endpoint, agent_id=self._config.agent_id)
+        log.info("clawdb.connected", endpoint=self._core.base_url, agent_id=self._config.agent_id)
 
     def disconnect(self) -> None:
         if self._session_client:
             self._session_client.revoke()
-        if self._channel:
-            try:
-                self._channel.close()
-            except Exception:
-                pass
+        if self._core:
+            self._core.close()
+        self._core = None
+        self._session_client = None
+        self._memory_client = self._branch_client = None
+        self._sync_client = self._reflect_client = self._tx_client = None
         log.info("clawdb.disconnected")
 
     def __enter__(self) -> "ClawDB":
@@ -111,37 +114,48 @@ class ClawDB:
     def __exit__(self, *args: Any) -> None:
         self.disconnect()
 
-    def _require_session(self) -> SessionClient:
-        if self._session_client is None:
-            raise RuntimeError("Not connected. Call connect() or use 'with' statement.")
+    def _require_core(self) -> HttpCore:
+        if self._core is None:
+            self.connect()
+        assert self._core is not None
+        return self._core
+
+    def health(self) -> dict[str, Any]:
+        """Server health, including which components are enabled."""
+        return self._require_core().call("Health")
+
+    @property
+    def session(self) -> SessionClient:
+        self._require_core()
+        assert self._session_client is not None
         return self._session_client
 
     @property
     def memory(self) -> MemoryClient:
         if self._memory_client is None:
-            self._memory_client = MemoryClient(self._stub, self._require_session(), self._config.api_key)
+            self._memory_client = MemoryClient(self._require_core())
         return self._memory_client
 
     @property
     def branches(self) -> BranchClient:
         if self._branch_client is None:
-            self._branch_client = BranchClient(self._stub, self._require_session(), self._config.api_key)
+            self._branch_client = BranchClient(self._require_core())
         return self._branch_client
 
     @property
     def sync(self) -> SyncClientWrapper:
         if self._sync_client is None:
-            self._sync_client = SyncClientWrapper(self._stub, self._require_session(), self._config.api_key)
+            self._sync_client = SyncClientWrapper(self._require_core())
         return self._sync_client
 
     @property
     def reflect(self) -> ReflectClient:
         if self._reflect_client is None:
-            self._reflect_client = ReflectClient(self._stub, self._require_session(), self._config.api_key)
+            self._reflect_client = ReflectClient(self._require_core())
         return self._reflect_client
 
     @property
     def tx(self) -> TxClient:
         if self._tx_client is None:
-            self._tx_client = TxClient(self._stub, self._require_session(), self._config.api_key)
+            self._tx_client = TxClient(self._require_core())
         return self._tx_client

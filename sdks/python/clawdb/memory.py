@@ -1,29 +1,59 @@
 """Sync MemoryClient and BranchClient for the ClawDB Python SDK."""
 from __future__ import annotations
 
-import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from clawdb._transport import make_metadata, with_retry
+from clawdb._http import HttpCore
 from clawdb.errors import ClawDBError, ClawDBValidationError
 from clawdb.models import BranchInfo, DiffResult, MemoryRecord, MergeResult, SearchResult
-
-if TYPE_CHECKING:
-    from clawdb.session import SessionClient
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 
 
-class MemoryClient:
-    def __init__(self, stub: Any, session: "SessionClient", api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
+def require_content(content: str) -> None:
+    if not content or not content.strip():
+        raise ClawDBValidationError("content must be a non-empty string", field="content", constraint="non-empty")
 
-    def _meta(self) -> list[tuple[str, str]]:
-        token = self._session.token if self._session.token else None
-        return make_metadata(token, self._api_key)
+
+def check_top_k(top_k: int) -> None:
+    if top_k > 100:
+        raise ClawDBValidationError("top_k cannot exceed 100", field="top_k", constraint="<=100")
+
+
+def check_ids(memory_ids: list[str]) -> None:
+    if not memory_ids:
+        raise ClawDBValidationError("memory_ids must be non-empty", field="memory_ids")
+    for mid in memory_ids:
+        if not UUID_RE.match(mid):
+            raise ClawDBValidationError(f"Invalid UUID: {mid}", field="memory_ids", constraint="uuid")
+
+
+def to_memory(m: Any) -> MemoryRecord:
+    m = m if isinstance(m, dict) else {}
+    return MemoryRecord(id=str(m.get("id", "")), content=str(m.get("content", "")), memory_type=str(m.get("memory_type", "")), tags=list(m.get("tags") or []))
+
+
+def to_hit(h: Any) -> SearchResult:
+    h = h if isinstance(h, dict) else {}
+    meta = h.get("metadata")
+    return SearchResult(
+        id=str(h.get("id", "")),
+        content=str(h.get("content", "")),
+        score=float(h.get("score") or 0.0),
+        memory_type=str(h.get("memory_type", "")),
+        tags=list(h.get("tags") or []),
+        metadata=meta if isinstance(meta, dict) else {},
+    )
+
+
+def remember_payload(content: str, memory_type: str, tags: list[str] | None, metadata: dict[str, Any] | None) -> dict[str, Any]:
+    return {"content": content, "type": memory_type, "tags": tags or [], "metadata": metadata or {}}
+
+
+class MemoryClient:
+    def __init__(self, core: HttpCore) -> None:
+        self._core = core
 
     def remember(
         self,
@@ -34,27 +64,22 @@ class MemoryClient:
         metadata: dict[str, Any] | None = None,
         ttl_days: int | None = None,
     ) -> str:
-        if not content or not content.strip():
-            raise ClawDBValidationError("content must be a non-empty string", field="content", constraint="non-empty")
+        """Stores a memory and returns its id. (`ttl_days` is accepted for
+        compatibility; the server has no per-memory expiry yet.)"""
+        require_content(content)
+        return str(self._core.call("Remember", remember_payload(content, memory_type, tags, metadata)).get("memory_id", ""))
 
-        def _call() -> str:
-            try:
-                resp = self._stub.Remember(
-                    _build_request(
-                        "Remember",
-                        content=content,
-                        memory_type=memory_type,
-                        tags=tags or [],
-                        metadata=json.dumps(metadata or {}),
-                        ttl_days=ttl_days or 0,
-                    ),
-                    metadata=self._meta(),
-                )
-                return resp.memory_id
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+    def remember_typed(
+        self,
+        content: str,
+        *,
+        memory_type: str = "context",
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> str:
+        require_content(content)
+        return str(self._core.call("Remember", remember_payload(content, memory_type, tags, metadata)).get("memory_id", ""))
 
     def search(
         self,
@@ -65,259 +90,67 @@ class MemoryClient:
         filter: dict[str, Any] | None = None,
         alpha: float = 0.7,
     ) -> list[SearchResult]:
-        if top_k > 100:
-            raise ClawDBValidationError("top_k cannot exceed 100", field="top_k", constraint="<=100")
-
-        def _call() -> list[SearchResult]:
-            try:
-                resp = self._stub.Search(
-                    _build_request("Search", query=query, top_k=top_k, semantic=semantic, filter_json=json.dumps(filter or {}), alpha=alpha),
-                    metadata=self._meta(),
-                )
-                return [SearchResult.model_validate(r) for r in _repeated_to_dicts(resp.results)]
-            except ClawDBValidationError:
-                raise
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Searches memory; punctuation and hyphens in `query` are safe.
+        (`filter` and `alpha` are accepted for compatibility.)"""
+        check_top_k(top_k)
+        return [to_hit(h) for h in self._core.call("Search", {"query": query, "top_k": top_k, "semantic": semantic}).get("hits", [])]
 
     def recall(self, memory_ids: list[str]) -> list[MemoryRecord]:
-        if not memory_ids:
-            raise ClawDBValidationError("memory_ids must be non-empty", field="memory_ids")
-        for mid in memory_ids:
-            if not UUID_RE.match(mid):
-                raise ClawDBValidationError(f"Invalid UUID: {mid}", field="memory_ids", constraint="uuid")
-
-        def _call() -> list[MemoryRecord]:
-            try:
-                resp = self._stub.Recall(_build_request("Recall", memory_ids=memory_ids), metadata=self._meta())
-                return [MemoryRecord.model_validate(m) for m in _repeated_to_dicts(resp.memories)]
-            except ClawDBValidationError:
-                raise
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
-
-    def remember_typed(
-        self,
-        content: str,
-        *,
-        type: str = "context",
-        tags: list[str] | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> str:
-        if not content or not content.strip():
-            raise ClawDBValidationError("content must be a non-empty string", field="content", constraint="non-empty")
-
-        def _call() -> str:
-            try:
-                resp = self._stub.RememberTyped(
-                    _build_request(
-                        "RememberTyped",
-                        content=content,
-                        type=type,
-                        tags=tags or [],
-                        metadata_json=json.dumps(metadata or {}),
-                    ),
-                    metadata=self._meta(),
-                )
-                return resp.memory_id
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        check_ids(memory_ids)
+        return [to_memory(self._core.call("GetMemory", {"memory_id": mid})) for mid in memory_ids]
 
     def update(self, memory_id: str, content: str) -> bool:
-        def _call() -> bool:
-            try:
-                resp = self._stub.UpdateMemory(
-                    _build_request("UpdateMemory", memory_id=memory_id, content=content),
-                    metadata=self._meta(),
-                )
-                return bool(resp.updated)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        require_content(content)
+        return bool(self._core.call("UpdateMemory", {"memory_id": memory_id, "content": content}).get("updated"))
 
     def delete(self, memory_id: str) -> bool:
-        def _call() -> bool:
-            try:
-                resp = self._stub.DeleteMemory(
-                    _build_request("DeleteMemory", memory_id=memory_id),
-                    metadata=self._meta(),
-                )
-                return bool(resp.deleted)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
+        return bool(self._core.call("DeleteMemory", {"memory_id": memory_id}).get("deleted"))
 
-        return with_retry(_call)
+    def forget(self, memory_id: str) -> None:
+        """Deletes a memory (same as `delete`, matching the async client)."""
+        self.delete(memory_id)
 
-    def list(
-        self,
-        *,
-        memory_type: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-        sort_by: str = "created_at",
-    ) -> list[MemoryRecord]:
-        def _call() -> list[MemoryRecord]:
-            try:
-                resp = self._stub.ListMemories(
-                    _build_request("List", memory_type=memory_type or "", limit=limit, offset=offset, sort_by=sort_by),
-                    metadata=self._meta(),
-                )
-                return [MemoryRecord.model_validate(m) for m in _repeated_to_dicts(resp.memories)]
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+    def list(self, *, memory_type: str | None = None, limit: int = 50, **_: Any) -> list[MemoryRecord]:
+        return [to_memory(m) for m in self._core.call("ListMemories", {"type": memory_type or "", "limit": limit}).get("memories", [])]
 
     def score(self, memory_id: str) -> dict[str, float]:
-        def _call() -> dict[str, float]:
-            try:
-                resp = self._stub.ScoreMemory(_build_request("Score", memory_id=memory_id), metadata=self._meta())
-                return {"importance": resp.importance, "recency": resp.recency, "confidence": resp.confidence, "composite": resp.composite}
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        raise ClawDBError("UNIMPLEMENTED", "Memory scoring is not available on the server")
 
 
 class BranchClient:
-    def __init__(self, stub: Any, session: "SessionClient", api_key: str = "") -> None:
-        self._stub = stub
-        self._session = session
-        self._api_key = api_key
-
-    def _meta(self) -> list[tuple[str, str]]:
-        return make_metadata(self._session.token, self._api_key)
+    def __init__(self, core: HttpCore) -> None:
+        self._core = core
 
     def fork(self, name: str, *, from_branch: str = "") -> BranchInfo:
-        def _call() -> BranchInfo:
-            try:
-                resp = self._stub.Branch(_build_request("Branch", name=name, from_=from_branch), metadata=self._meta())
-                return BranchInfo(branch_id=resp.branch_id, name=resp.name)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Creates a branch from `from_branch` (a branch id; default trunk)."""
+        payload: dict[str, Any] = {"name": name}
+        if from_branch and UUID_RE.match(from_branch):
+            payload["from"] = from_branch
+        r = self._core.call("Branch", payload)
+        return BranchInfo(branch_id=r.get("branch_id", ""), name=r.get("name") or name)
 
     def list(self, *, status: str | None = None) -> list[BranchInfo]:
-        def _call() -> list[BranchInfo]:
-            try:
-                resp = self._stub.ListBranches(_build_request("ListBranches"), metadata=self._meta())
-                return [BranchInfo.model_validate(b) for b in _repeated_to_dicts(resp.branches)]
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return [BranchInfo.model_validate(b) for b in self._core.call("ListBranches").get("branches", [])]
 
     def get(self, branch_id: str) -> BranchInfo:
-        def _call() -> BranchInfo:
-            try:
-                resp = self._stub.GetBranch(_build_request("GetBranch", branch_id=branch_id), metadata=self._meta())
-                return BranchInfo.model_validate(_proto_to_dict(resp.branch))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return BranchInfo.model_validate(self._core.call("GetBranch", {"branch_id": branch_id}))
 
     def get_by_name(self, name: str) -> BranchInfo:
-        def _call() -> BranchInfo:
-            try:
-                resp = self._stub.GetBranchByName(_build_request("GetBranchByName", name=name), metadata=self._meta())
-                return BranchInfo.model_validate(_proto_to_dict(resp.branch))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return BranchInfo.model_validate(self._core.call("GetBranchByName", {"name": name}))
 
     def get_trunk(self) -> BranchInfo:
-        def _call() -> BranchInfo:
-            try:
-                resp = self._stub.GetTrunkBranch(_build_request("GetTrunkBranch"), metadata=self._meta())
-                return BranchInfo.model_validate(_proto_to_dict(resp.branch))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return BranchInfo.model_validate(self._core.call("GetTrunkBranch"))
 
     def diff(self, branch_id: str, target: str = "") -> DiffResult:
-        def _call() -> DiffResult:
-            try:
-                resp = self._stub.Diff(_build_request("Diff", branch_id=branch_id, target=target), metadata=self._meta())
-                return DiffResult.model_validate(_proto_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Diffs a branch against `target`: a branch id, a name, or trunk."""
+        return DiffResult.model_validate(self._core.call("Diff", {"branch_id": branch_id, "target": target}))
 
     def merge(self, source: str, *, target: str = "", strategy: str = "") -> MergeResult:
-        def _call() -> MergeResult:
-            try:
-                resp = self._stub.Merge(_build_request("Merge", source=source, target=target, strategy=strategy), metadata=self._meta())
-                return MergeResult.model_validate(_proto_to_dict(resp))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Merges branch `source` into `target`: an id, a name, or trunk."""
+        return MergeResult.model_validate(self._core.call("Merge", {"source": source, "target": target, "strategy": strategy}))
 
     def discard(self, branch_id: str) -> bool:
-        def _call() -> bool:
-            try:
-                resp = self._stub.DiscardBranch(_build_request("DiscardBranch", branch_id=branch_id), metadata=self._meta())
-                return bool(resp.discarded)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return bool(self._core.call("DiscardBranch", {"branch_id": branch_id}).get("discarded"))
 
     def archive(self, branch_id: str) -> bool:
-        def _call() -> bool:
-            try:
-                resp = self._stub.ArchiveBranch(_build_request("ArchiveBranch", branch_id=branch_id), metadata=self._meta())
-                return bool(resp.archived)
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers — these adapt raw proto responses to dicts for Pydantic.
-# Before proto stubs are generated, operations pass through a thin HTTP JSON
-# fallback so tests can run without a live gRPC server.
-# ---------------------------------------------------------------------------
-
-class _FakeRequest(dict):
-    """Stands in for a proto message when stubs are not yet generated."""
-
-
-def _build_request(method: str, **kwargs: Any) -> _FakeRequest:
-    req = _FakeRequest(kwargs)
-    req["_method"] = method
-    return req
-
-
-def _repeated_to_dicts(items: Any) -> list[dict[str, Any]]:
-    if isinstance(items, list):
-        return [_proto_to_dict(i) for i in items]
-    # protobuf RepeatedContainer
-    return [_proto_to_dict(i) for i in items]
-
-
-def _proto_to_dict(msg: Any) -> dict[str, Any]:
-    if isinstance(msg, dict):
-        return msg
-    # For real proto messages we'd use MessageToDict; fall back gracefully
-    try:
-        from google.protobuf.json_format import MessageToDict
-        return MessageToDict(msg, preserving_proto_field_name=True)
-    except Exception:
-        return {}
+        return bool(self._core.call("ArchiveBranch", {"branch_id": branch_id}).get("archived"))

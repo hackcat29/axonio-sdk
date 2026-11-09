@@ -130,13 +130,16 @@ async def _wait_for_local_server(timeout_s: float = 5.0) -> bool:
 
 
 async def resolve_endpoint() -> ProvisionResult:
-    explicit_url = os.getenv('CLAWDB_URL')
-    if explicit_url:
-        return ProvisionResult(endpoint=explicit_url, api_key=None)
+    from clawdb._http import CLOUD_ENDPOINT
 
-    api_key = os.getenv('CLAWDB_API_KEY')
+    explicit_url = (os.getenv('CLAWDB_URL') or '').strip()
+    api_key = (os.getenv('CLAWDB_API_KEY') or '').strip() or None
+    if explicit_url:
+        # Keep the key: a cloud or self-hosted URL may need it.
+        return ProvisionResult(endpoint=explicit_url, api_key=api_key)
+
     if api_key:
-        return ProvisionResult(endpoint='https://cloud.clawdb.dev', api_key=api_key)
+        return ProvisionResult(endpoint=CLOUD_ENDPOINT, api_key=api_key)
 
     if _is_port_open('127.0.0.1', 50050):
         return ProvisionResult(endpoint='http://localhost:50050', api_key=None)

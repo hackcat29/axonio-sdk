@@ -1,102 +1,59 @@
-"""SessionClient for the ClawDB Python SDK."""
+"""Session management for the synchronous ClawDB client.
+
+The HTTP core opens, renews and retries sessions on its own; this client
+exposes them for callers that want to inspect or end one explicitly.
+"""
 from __future__ import annotations
 
 from typing import Any
 
-from clawdb._transport import make_metadata, with_retry
-from clawdb.errors import ClawDBAuthError, ClawDBError
+from clawdb._http import HttpCore
 
 
 class SessionClient:
-    def __init__(self, stub: Any, *, agent_id: str, role: str, api_key: str = "") -> None:
-        self._stub = stub
-        self._agent_id = agent_id
-        self._role = role
-        self._api_key = api_key
-        self.token: str | None = None
-        self.session_data: dict[str, Any] | None = None
+    def __init__(self, core: HttpCore) -> None:
+        self._core = core
+        self.session_data: dict[str, Any] = {}
+
+    @property
+    def token(self) -> str | None:
+        return self._core.token
 
     def create(self, *, role: str | None = None, scopes: list[str] | None = None, task_type: str | None = None) -> dict[str, Any]:
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.CreateSession(
-                    {"agent_id": self._agent_id, "role": role or self._role, "scopes": scopes or [], "task_type": task_type or ""},
-                    metadata=make_metadata(None, self._api_key),
-                )
-                data = _proto_session_to_dict(resp)
-                self.token = data.get("token")
-                self.session_data = data
-                return data
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Opens a new session (the role defaults to the client's)."""
+        if role:
+            self._core.role = role
+        self.session_data = self._core.open_session()
+        return self.session_data
 
     def validate(self) -> bool:
-        if not self.token:
+        """True when the current session is accepted by the server."""
+        if not self._core.token:
             return False
         try:
-            resp = self._stub.ValidateSession(
-                {"token": self.token},
-                metadata=make_metadata(self.token, self._api_key),
-            )
-            return bool(getattr(resp, "valid", False) or (isinstance(resp, dict) and resp.get("valid")))
+            data = self._core.call("ValidateSession")
         except Exception:
             return False
+        return bool(data.get("session_id") or data.get("id"))
 
     def refresh(self) -> dict[str, Any]:
-        if not self.token:
-            raise ClawDBAuthError("No active session to refresh")
-
-        def _call() -> dict[str, Any]:
-            try:
-                resp = self._stub.RefreshSession({"token": self.token}, metadata=make_metadata(self.token, self._api_key))
-                data = _proto_session_to_dict(resp)
-                self.token = data.get("token")
-                self.session_data = data
-                return data
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        """Replaces the current session with a new one."""
+        self._core.forget_session()
+        return self.create()
 
     def revoke_by_id(self, session_id: str) -> bool:
-        def _call() -> bool:
-            try:
-                resp = self._stub.RevokeSession({"session_id": session_id}, metadata=make_metadata(self.token, self._api_key))
-                return bool(getattr(resp, "revoked", False) or (isinstance(resp, dict) and resp.get("revoked")))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return bool(self._core.call("RevokeSession", {"session_id": session_id}).get("revoked"))
 
     def active_count(self) -> int:
-        def _call() -> int:
-            try:
-                resp = self._stub.ActiveSessionCount({}, metadata=make_metadata(self.token, self._api_key))
-                return int(getattr(resp, "count", 0) or (isinstance(resp, dict) and resp.get("count", 0)))
-            except Exception as exc:
-                raise ClawDBError.from_grpc_error(exc) from exc
-
-        return with_retry(_call)
+        return int(self._core.call("ActiveSessionCount").get("count") or 0)
 
     def revoke(self) -> None:
-        if not self.token:
+        """Ends the current session, if any. Never raises."""
+        session_id = self._core.session_id
+        if not session_id:
             return
         try:
-            self._stub.RevokeSession({"token": self.token}, metadata=make_metadata(self.token, self._api_key))
+            self._core.call("RevokeSession", {"session_id": session_id})
         except Exception:
             pass
-        finally:
-            self.token = None
-            self.session_data = None
-
-
-def _proto_session_to_dict(resp: Any) -> dict[str, Any]:
-    if isinstance(resp, dict):
-        return resp
-    try:
-        from google.protobuf.json_format import MessageToDict
-        return MessageToDict(resp, preserving_proto_field_name=True)
-    except Exception:
-        return {}
+        self._core.forget_session()

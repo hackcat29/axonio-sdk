@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "clawdb"
-version = "0.1.4"
+version = "0.2.0"
 description = "Zero-config database for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,23 +21,21 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-  "grpcio>=1.60.0",
-  "grpcio-tools>=1.60.0",
-  "protobuf>=4.25.0",
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
-  "tenacity>=8.2.0",
   "httpx>=0.27.0",
   "structlog>=24.2",
 ]
 
 [project.optional-dependencies]
-async = ["grpcio>=1.64"]
 langchain = ["langchain-core>=0.2"]
 openai = ["openai>=1.30"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["clawdb"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [".venv*", "venv", "build-check", "dist", "**/__pycache__"]
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -46,7 +44,6 @@ dependencies = [
   "pytest-cov>=5.0",
   "mypy>=1.10",
   "ruff>=0.4",
-  "grpc-stubs>=1.53",
 ]
 
 [tool.hatch.envs.default.scripts]
