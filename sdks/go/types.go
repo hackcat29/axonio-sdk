@@ -1,6 +1,7 @@
-package clawdb
+package axonio
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -15,6 +16,7 @@ const (
 	MemoryTypeReasoningTrace MemoryType = "reasoning_trace"
 	MemoryTypeMessage        MemoryType = "message"
 	MemoryTypeSummary        MemoryType = "summary"
+	MemoryTypeSemantic       MemoryType = "semantic"
 )
 
 // MemoryRecord is a single stored memory.
@@ -47,6 +49,20 @@ type BranchInfo struct {
 	BranchID   string `json:"branch_id"`
 	Name       string `json:"name"`
 	BranchJSON string `json:"branch_json,omitempty"`
+}
+
+func branchFrom(v interface{}) BranchInfo {
+	m := asMap(v)
+	if inner, ok := m["branch"].(map[string]interface{}); ok {
+		m = inner
+	}
+	id, _ := m["id"].(string)
+	if id == "" {
+		id, _ = m["branch_id"].(string)
+	}
+	name, _ := m["name"].(string)
+	raw, _ := json.Marshal(m)
+	return BranchInfo{BranchID: id, Name: name, BranchJSON: string(raw)}
 }
 
 // BranchResponse is the result of a Branch (fork) call.
@@ -125,8 +141,12 @@ type RememberOptions struct {
 
 // SearchOptions are optional parameters for memory search.
 type SearchOptions struct {
-	TopK     int
+	TopK int
+	// KeywordOnly turns off semantic (meaning-based) matching.
+	KeywordOnly bool
+	// Semantic is ignored: semantic search is on unless KeywordOnly is set.
 	Semantic bool
-	Alpha    float64
-	Filter   map[string]interface{}
+	// Alpha and Filter are accepted for compatibility with the other SDKs and ignored.
+	Alpha  float64
+	Filter map[string]interface{}
 }

@@ -113,7 +113,7 @@ jobs:
       - name: Ping sum.golang.org to trigger module indexing
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          curl -sf "https://sum.golang.org/lookup/github.com/Claw-DB/claw-sdk/sdks/go@v${VERSION}" || true
+          curl -sf "https://sum.golang.org/lookup/github.com/hackcat29/axonio-sdk/sdks/go@v${VERSION}" || true
 
   # ──────────────────────────────────────────────────────────────
   # GitHub Release

@@ -1,13 +1,13 @@
-package clawdb
+package axonio
 
 import "time"
 
-// Option is a functional option for configuring ClawDB.
+// Option is a functional option for configuring the client.
 type Option func(*Config)
 
 // WithEndpoint sets the server endpoint.
 func WithEndpoint(endpoint string) Option {
-	return func(c *Config) { c.Endpoint = endpoint }
+	return func(c *Config) { c.Endpoint = endpoint; c.endpointSet = true }
 }
 
 // WithAPIKey sets the API key.

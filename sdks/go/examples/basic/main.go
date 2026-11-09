@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 
-	clawdb "github.com/Claw-DB/claw-sdk/sdks/go"
+	axonio "github.com/hackcat29/axonio-sdk/sdks/go"
 )
 
 func main() {
-	db, err := clawdb.FromEnv()
+	// Reads AXONIO_API_KEY (the Axonio cloud) or AXONIO_URL (a self-hosted server).
+	db, err := axonio.New()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -17,9 +18,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Store a memory
-	id, err := db.Memory.Remember(ctx, "The user prefers concise answers", &clawdb.RememberOptions{
-		MemoryType: clawdb.MemoryTypeContext,
+	id, err := db.Memory.Remember(ctx, "The user prefers concise answers", &axonio.RememberOptions{
+		MemoryType: axonio.MemoryTypeContext,
 		Tags:       []string{"preferences"},
 	})
 	if err != nil {
@@ -27,12 +27,11 @@ func main() {
 	}
 	fmt.Printf("Stored memory: %s\n", id)
 
-	// Search semantically
-	results, err := db.Memory.Search(ctx, "user preferences", &clawdb.SearchOptions{TopK: 5, Semantic: true})
+	hits, err := db.Memory.Search(ctx, "how should I phrase answers?", &axonio.SearchOptions{TopK: 5})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, r := range results {
-		fmt.Printf("  [%.2f] %s\n", r.Score, r.Content)
+	for _, h := range hits {
+		fmt.Printf("  [%.2f] %s\n", h.Score, h.Content)
 	}
 }

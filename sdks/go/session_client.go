@@ -1,55 +1,45 @@
-package clawdb
+package axonio
 
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-)
+import "context"
 
-// SessionClient provides session-oriented operations.
+// SessionClient provides session operations. The client opens and renews its
+// own session; use this to inspect or end sessions.
 type SessionClient struct {
 	*httpClient
 }
 
-func newSessionClient(cfg *Config, session *Session) *SessionClient {
-	return &SessionClient{newHTTPClient(cfg, session)}
-}
-
-// Create creates a new session. POST (implicit via SDK config — session is passed in headers)
+// Create opens a new session for agentID (any name; it maps to a stable UUID)
+// and makes it the one the client uses.
 func (s *SessionClient) Create(ctx context.Context, agentID, role string, scopes []string, ttlSecs int) (*Session, error) {
-	payload := map[string]interface{}{
-		"agent_id": agentID,
-		"role":     role,
-		"scopes":   scopes,
-		"ttl_secs": ttlSecs,
-	}
-	out, err := s.post(ctx, "/v1/sessions", payload)
+	out, err := s.core.openSession(ctx, agentID, role, scopes, ttlSecs)
 	if err != nil {
 		return nil, err
 	}
-	raw, _ := json.Marshal(out)
 	var sess Session
-	_ = json.Unmarshal(raw, &sess)
+	decodeInto(out, &sess)
 	return &sess, nil
 }
 
-// Validate validates the current session. GET /v1/sessions/me
+// Validate returns the current session. GET /v1/sessions/me
 func (s *SessionClient) Validate(ctx context.Context) (map[string]interface{}, error) {
-	return s.get(ctx, "/v1/sessions/me")
+	out, err := s.get(ctx, "/v1/sessions/me", nil)
+	return asMap(out), err
 }
 
-// Revoke revokes a session by ID. DELETE /v1/sessions/:id
-func (s *SessionClient) Revoke(ctx context.Context, sessionID string) error {
-	_, err := s.delete(ctx, fmt.Sprintf("/v1/sessions/%s", sessionID))
-	return err
+// Revoke ends a session by id. DELETE /v1/sessions/:id
+func (s *SessionClient) Revoke(ctx context.Context, sessionID string) (bool, error) {
+	if _, err := s.delete(ctx, "/v1/sessions/"+seg(sessionID)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ActiveCount returns the number of active sessions. GET /v1/sessions/active/count
 func (s *SessionClient) ActiveCount(ctx context.Context) (int, error) {
-	out, err := s.get(ctx, "/v1/sessions/active/count")
+	out, err := s.get(ctx, "/v1/sessions/active/count", nil)
 	if err != nil {
 		return 0, err
 	}
-	count, _ := out["count"].(float64)
+	count, _ := asMap(out)["count"].(float64)
 	return int(count), nil
 }

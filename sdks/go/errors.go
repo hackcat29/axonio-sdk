@@ -1,97 +1,101 @@
-package clawdb
+package axonio
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"strconv"
 )
 
-// ErrorCode identifies the category of a ClawDB error.
+// ErrorCode identifies the category of an Axonio error.
 type ErrorCode string
 
 const (
-	ErrorCodeAuth          ErrorCode = "AUTH_FAILED"
-	ErrorCodeAccessDenied  ErrorCode = "ACCESS_DENIED"
-	ErrorCodeNotFound      ErrorCode = "NOT_FOUND"
-	ErrorCodeRateLimit     ErrorCode = "RATE_LIMITED"
-	ErrorCodeUnavailable   ErrorCode = "UNAVAILABLE"
-	ErrorCodeTimeout       ErrorCode = "TIMEOUT"
-	ErrorCodeValidation    ErrorCode = "INVALID_INPUT"
-	ErrorCodeInternal      ErrorCode = "INTERNAL"
+	ErrorCodeAuth         ErrorCode = "AUTH_FAILED"
+	ErrorCodeAccessDenied ErrorCode = "ACCESS_DENIED"
+	ErrorCodeNotFound     ErrorCode = "NOT_FOUND"
+	ErrorCodeRateLimit    ErrorCode = "RATE_LIMITED"
+	ErrorCodeUnavailable  ErrorCode = "UNAVAILABLE"
+	ErrorCodeTimeout      ErrorCode = "TIMEOUT"
+	ErrorCodeValidation   ErrorCode = "INVALID_INPUT"
+	ErrorCodeInternal     ErrorCode = "INTERNAL"
 )
 
-// ClawDBError is the base error type for the ClawDB Go SDK.
-type ClawDBError struct {
+// Error is the error type every call returns.
+type Error struct {
 	Code       ErrorCode
 	Message    string
 	Details    interface{}
 	RequestID  string
 	RetryAfter int // milliseconds; non-zero for rate limit errors
+	Status     int // HTTP status, when the error came from a response
 }
 
-func (e *ClawDBError) Error() string {
+// ClawDBError is the name this type had before the rename to Axonio.
+type ClawDBError = Error
+
+func (e *Error) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
 // IsNotFound returns true if this is a NOT_FOUND error.
-func (e *ClawDBError) IsNotFound() bool { return e.Code == ErrorCodeNotFound }
+func (e *Error) IsNotFound() bool { return e.Code == ErrorCodeNotFound }
 
 // IsRateLimited returns true if this is a RATE_LIMITED error.
-func (e *ClawDBError) IsRateLimited() bool { return e.Code == ErrorCodeRateLimit }
+func (e *Error) IsRateLimited() bool { return e.Code == ErrorCodeRateLimit }
 
 // IsRetriable returns true for transient errors.
-func (e *ClawDBError) IsRetriable() bool {
-	return e.Code == ErrorCodeUnavailable || e.Code == ErrorCodeRateLimit
+func (e *Error) IsRetriable() bool {
+	return e.Code == ErrorCodeUnavailable || e.Code == ErrorCodeRateLimit || e.Code == ErrorCodeTimeout
 }
 
-// FromGRPCError maps a gRPC status error to a ClawDBError.
-func FromGRPCError(err error) *ClawDBError {
-	if err == nil {
-		return nil
+// errorFromHTTP maps an error response to an *Error, using the server's own
+// message when it sent one.
+func errorFromHTTP(status int, raw []byte, header http.Header) *Error {
+	var body map[string]interface{}
+	message := string(raw)
+	if json.Unmarshal(raw, &body) == nil {
+		if s, _ := body["error"].(string); s != "" {
+			message = s
+		} else if s, _ := body["message"].(string); s != "" {
+			message = s
+		}
+		if detail, _ := body["detail"].(string); detail != "" {
+			message += ": " + detail
+		} else if req, _ := body["required"].(string); req != "" {
+			message += ": requires " + req
+		}
 	}
-	st, ok := status.FromError(err)
-	if !ok {
-		return &ClawDBError{Code: ErrorCodeInternal, Message: err.Error()}
+	if message == "" {
+		message = http.StatusText(status)
 	}
-	msg := st.Message()
-	switch st.Code() {
-	case codes.Unauthenticated:
-		return &ClawDBError{Code: ErrorCodeAuth, Message: msg}
-	case codes.PermissionDenied:
-		return &ClawDBError{Code: ErrorCodeAccessDenied, Message: msg}
-	case codes.NotFound:
-		return &ClawDBError{Code: ErrorCodeNotFound, Message: msg}
-	case codes.ResourceExhausted:
-		return &ClawDBError{Code: ErrorCodeRateLimit, Message: msg, RetryAfter: 1000}
-	case codes.Unavailable:
-		return &ClawDBError{Code: ErrorCodeUnavailable, Message: msg}
-	case codes.DeadlineExceeded:
-		return &ClawDBError{Code: ErrorCodeTimeout, Message: msg}
-	case codes.InvalidArgument:
-		return &ClawDBError{Code: ErrorCodeValidation, Message: msg}
-	default:
-		return &ClawDBError{Code: ErrorCodeInternal, Message: msg}
-	}
-}
-
-// FromHTTPResponse maps an HTTP status code to a ClawDBError.
-func FromHTTPResponse(statusCode int, body string) *ClawDBError {
-	switch statusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return &ClawDBError{Code: ErrorCodeAuth, Message: body}
+	e := &Error{Message: message, Details: body, RequestID: header.Get("x-request-id"), Status: status}
+	switch status {
+	case http.StatusUnauthorized:
+		e.Code = ErrorCodeAuth
+	case http.StatusPaymentRequired, http.StatusForbidden:
+		e.Code = ErrorCodeAccessDenied
 	case http.StatusNotFound:
-		return &ClawDBError{Code: ErrorCodeNotFound, Message: body}
+		e.Code = ErrorCodeNotFound
+	case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
+		e.Code = ErrorCodeValidation
 	case http.StatusTooManyRequests:
-		return &ClawDBError{Code: ErrorCodeRateLimit, Message: body, RetryAfter: 1000}
-	case http.StatusServiceUnavailable:
-		return &ClawDBError{Code: ErrorCodeUnavailable, Message: body}
+		e.Code = ErrorCodeRateLimit
+		e.RetryAfter = 1000
+		if secs, err := strconv.ParseFloat(header.Get("Retry-After"), 64); err == nil && secs >= 0 {
+			e.RetryAfter = int(secs * 1000)
+		}
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		e.Code = ErrorCodeUnavailable
 	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
-		return &ClawDBError{Code: ErrorCodeTimeout, Message: body}
-	case http.StatusBadRequest, http.StatusUnprocessableEntity:
-		return &ClawDBError{Code: ErrorCodeValidation, Message: body}
+		e.Code = ErrorCodeTimeout
 	default:
-		return &ClawDBError{Code: ErrorCodeInternal, Message: body}
+		e.Code = ErrorCodeInternal
 	}
+	return e
+}
+
+// FromHTTPResponse maps an HTTP status code and body to an *Error.
+func FromHTTPResponse(statusCode int, body string) *Error {
+	return errorFromHTTP(statusCode, []byte(body), http.Header{})
 }

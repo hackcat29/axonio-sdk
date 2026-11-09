@@ -1,4 +1,4 @@
-package clawdb
+package axonio
 
 import (
 	"archive/tar"
@@ -52,6 +52,7 @@ type Options struct {
 func applyOptionsStruct(cfg *Config, options Options) {
 	if options.Endpoint != "" {
 		cfg.Endpoint = options.Endpoint
+		cfg.endpointSet = true
 	}
 	if options.APIKey != "" {
 		cfg.APIKey = options.APIKey
@@ -242,17 +243,15 @@ func downloadBinary() (string, error) {
 	return "", fmt.Errorf("unable to locate downloadable clawdb-server release archive")
 }
 
-func autoProvisionEndpoint(cfg *Config) error {
-	if cfg.Endpoint != "" {
+// resolveEndpoint settles where the client connects. An endpoint given in code
+// or the environment wins. An API key with no endpoint means the hosted cloud.
+// Otherwise a local clawdb-server is used, started if it is installed.
+func resolveEndpoint(cfg *Config) error {
+	if cfg.endpointSet {
 		return nil
 	}
-	if url := os.Getenv("CLAWDB_URL"); url != "" {
-		cfg.Endpoint = url
-		return nil
-	}
-	if apiKey := os.Getenv("CLAWDB_API_KEY"); apiKey != "" {
-		cfg.APIKey = apiKey
-		cfg.Endpoint = "https://cloud.clawdb.dev"
+	if cfg.APIKey != "" {
+		cfg.Endpoint = CloudEndpoint
 		return nil
 	}
 	if localServerHealthy() {
@@ -260,29 +259,24 @@ func autoProvisionEndpoint(cfg *Config) error {
 		return nil
 	}
 	if err := spawnLocalServer("clawdb-server"); err == nil && waitForLocalServer(5*time.Second) {
-		cfg.Endpoint = "http://localhost:50050"
 		return nil
 	}
 	if installedBinary, err := installedBinaryPath(); err == nil {
 		if _, statErr := os.Stat(installedBinary); statErr == nil {
 			if err := spawnLocalServer(installedBinary); err == nil && waitForLocalServer(5*time.Second) {
-				cfg.Endpoint = "http://localhost:50050"
 				return nil
 			}
 		}
 	}
 	if archivePath, err := downloadBinary(); err == nil {
-		extractedBinary, extractErr := extractBinary(archivePath)
-		if extractErr == nil {
-			if err := spawnLocalServer(extractedBinary); err == nil && waitForLocalServer(5*time.Second) {
-				cfg.Endpoint = "http://localhost:50050"
+		if extracted, extractErr := extractBinary(archivePath); extractErr == nil {
+			if err := spawnLocalServer(extracted); err == nil && waitForLocalServer(5*time.Second) {
 				return nil
 			}
 		}
 	}
 	if localServerHealthy() {
-		cfg.Endpoint = "http://localhost:50050"
 		return nil
 	}
-	return fmt.Errorf("could not auto-provision clawdb-server; start clawdb-server manually or set CLAWDB_URL/CLAWDB_API_KEY")
+	return fmt.Errorf("could not find a server: set AXONIO_API_KEY to use the Axonio cloud, set AXONIO_URL, or start clawdb-server")
 }

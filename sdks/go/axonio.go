@@ -1,21 +1,27 @@
-// Package clawdb is the official Go SDK for ClawDB — the cognitive database for AI agents.
+// Package axonio is the Go SDK for Axonio: persistent memory for AI agents.
 //
-// Quick start:
+// Quick start (reads AXONIO_API_KEY; talks to the Axonio cloud):
 //
-//	db, err := clawdb.New(clawdb.WithAPIKey("sk-..."), clawdb.WithEndpoint("https://api.clawdb.io"))
+//	db, err := axonio.New()
 //	if err != nil { log.Fatal(err) }
 //	defer db.Close()
 //
-//	id, err := db.Memory().Remember(ctx, "User prefers dark mode", nil)
-package clawdb
+//	id, err := db.Memory.Remember(ctx, "User prefers dark mode", nil)
+//	hits, err := db.Memory.Search(ctx, "what theme does the user like?", nil)
+//
+// For a self-hosted server pass axonio.WithEndpoint("https://db.example.com"),
+// or set AXONIO_URL.
+package axonio
+
+import "context"
 
 // Version is the current SDK version.
-const Version = "0.1.3"
+const Version = "0.2.0"
 
-// ClawDB is the top-level client.
-type ClawDB struct {
-	cfg     *Config
-	session *Session
+// Axonio is the top-level client.
+type Axonio struct {
+	cfg  *Config
+	core *core
 
 	Memory  *MemoryClient
 	Branch  *BranchesClient
@@ -26,8 +32,13 @@ type ClawDB struct {
 	Tx      *TxClient
 }
 
-// New creates a ClawDB client from an optional Options struct or functional options.
-func New(args ...interface{}) (*ClawDB, error) {
+// ClawDB is the name this client had before the rename to Axonio.
+type ClawDB = Axonio
+
+// New creates a client from functional options and/or an Options struct. With
+// only an API key (option or AXONIO_API_KEY) it talks to the Axonio cloud. A
+// session is opened on the first call and renewed automatically.
+func New(args ...interface{}) (*Axonio, error) {
 	cfg := LoadConfig()
 	for _, arg := range args {
 		switch value := arg.(type) {
@@ -41,29 +52,71 @@ func New(args ...interface{}) (*ClawDB, error) {
 			}
 		}
 	}
-	if err := autoProvisionEndpoint(cfg); err != nil {
-		return nil, err
+	if !cfg.endpointSet && cfg.APIKey != "" {
+		cfg.Endpoint = CloudEndpoint
 	}
-	db := &ClawDB{cfg: cfg}
-	db.Memory = newMemoryClient(cfg, db.session)
-	db.Branch = newBranchesClient(cfg, db.session)
-	db.Sync = newSyncClient(cfg, db.session)
-	db.Reflect = newReflectClient(cfg, db.session)
-	db.Session = newSessionClient(cfg, db.session)
-	db.Health = newHealthClient(cfg)
-	db.Tx = newTxClient(cfg, db.session)
-	return db, nil
+	return build(cfg), nil
 }
 
-// FromEnv creates a ClawDB client from environment variables.
-func FromEnv() (*ClawDB, error) {
+// AutoProvision is New plus a search for a server: with no endpoint and no API
+// key it uses a running local clawdb-server, starting one if it is installed.
+func AutoProvision(args ...interface{}) (*Axonio, error) {
+	cfg := LoadConfig()
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case Option:
+			value(cfg)
+		case Options:
+			applyOptionsStruct(cfg, value)
+		case *Options:
+			if value != nil {
+				applyOptionsStruct(cfg, *value)
+			}
+		}
+	}
+	if err := resolveEndpoint(cfg); err != nil {
+		return nil, err
+	}
+	return build(cfg), nil
+}
+
+func build(cfg *Config) *Axonio {
+	c := newCore(cfg)
+	db := &Axonio{cfg: cfg, core: c}
+	db.Memory = &MemoryClient{&httpClient{c}}
+	db.Branch = &BranchesClient{&httpClient{c}}
+	db.Sync = &SyncClient{&httpClient{c}}
+	db.Reflect = &ReflectClient{&httpClient{c}}
+	db.Session = &SessionClient{&httpClient{c}}
+	db.Health = &HealthClient{&httpClient{c}}
+	db.Tx = &TxClient{&httpClient{c}}
+	return db
+}
+
+// FromEnv creates a client from environment variables.
+func FromEnv() (*Axonio, error) {
 	return New()
 }
 
-// FromAPIKey creates a ClawDB client with an explicit API key and endpoint.
-func FromAPIKey(apiKey, endpoint string) (*ClawDB, error) {
+// FromAPIKey creates a client with an explicit API key. An empty endpoint
+// means the Axonio cloud.
+func FromAPIKey(apiKey, endpoint string) (*Axonio, error) {
 	return New(Options{APIKey: apiKey, Endpoint: endpoint})
 }
 
-// Close releases any held resources.
-func (db *ClawDB) Close() {}
+// Connect opens the session now instead of on the first call, so a bad key
+// fails here.
+func (db *Axonio) Connect(ctx context.Context) error {
+	return db.core.ensureSession(ctx)
+}
+
+// Close revokes the session, if one is open. It is safe to call more than once.
+func (db *Axonio) Close() {
+	db.core.mu.Lock()
+	id := db.core.sessionID
+	db.core.mu.Unlock()
+	if id != "" {
+		_, _ = db.Session.Revoke(context.Background(), id)
+	}
+	db.core.forgetSession()
+}

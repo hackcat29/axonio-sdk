@@ -1,12 +1,13 @@
-package clawdb
+package axonio
 
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
-// Config holds all configuration for a ClawDB client.
+// Config holds the client settings.
 type Config struct {
 	Endpoint  string
 	APIKey    string
@@ -17,6 +18,8 @@ type Config struct {
 	Timeout   time.Duration
 	TLS       bool
 	LogLevel  string
+
+	endpointSet bool
 }
 
 // DefaultConfig returns a Config populated with defaults.
@@ -28,41 +31,51 @@ func DefaultConfig() *Config {
 		Role:      "assistant",
 		Region:    "local",
 		Timeout:   30 * time.Second,
-		TLS:       false,
 		LogLevel:  "info",
 	}
 }
 
-// LoadConfig builds a Config from environment variables, falling back to defaults.
+// env returns the first non-empty AXONIO_<name>, then CLAWDB_<name>.
+func env(names ...string) string {
+	for _, name := range names {
+		for _, prefix := range []string{"AXONIO_", "CLAWDB_"} {
+			if v := strings.TrimSpace(os.Getenv(prefix + name)); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
+// LoadConfig builds a Config from environment variables (AXONIO_*, with the
+// older CLAWDB_* names as a fallback), then defaults.
 func LoadConfig() *Config {
 	cfg := DefaultConfig()
-	if v := os.Getenv("CLAWDB_ENDPOINT"); v != "" {
+	if v := env("URL", "ENDPOINT"); v != "" {
 		cfg.Endpoint = v
+		cfg.endpointSet = true
 	}
-	if v := os.Getenv("CLAWDB_URL"); v != "" {
-		cfg.Endpoint = v
-	}
-	if v := os.Getenv("CLAWDB_API_KEY"); v != "" {
+	if v := env("API_KEY"); v != "" {
 		cfg.APIKey = v
 	}
-	if v := os.Getenv("CLAWDB_AGENT_ID"); v != "" {
+	if v := env("AGENT_ID"); v != "" {
 		cfg.AgentID = v
 	}
-	if v := os.Getenv("CLAWDB_WORKSPACE"); v != "" {
+	if v := env("WORKSPACE"); v != "" {
 		cfg.Workspace = v
 	}
-	if v := os.Getenv("CLAWDB_ROLE"); v != "" {
+	if v := env("ROLE"); v != "" {
 		cfg.Role = v
 	}
-	if v := os.Getenv("CLAWDB_REGION"); v != "" {
+	if v := env("REGION"); v != "" {
 		cfg.Region = v
 	}
-	if v := os.Getenv("CLAWDB_TIMEOUT_MS"); v != "" {
-		if ms, err := strconv.ParseInt(v, 10, 64); err == nil {
+	if v := env("TIMEOUT_MS"); v != "" {
+		if ms, err := strconv.ParseInt(v, 10, 64); err == nil && ms > 0 {
 			cfg.Timeout = time.Duration(ms) * time.Millisecond
 		}
 	}
-	if v := os.Getenv("CLAWDB_TLS"); v == "true" || v == "1" {
+	if v := env("TLS"); v == "true" || v == "1" {
 		cfg.TLS = true
 	}
 	return cfg

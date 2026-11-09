@@ -1,13 +1,13 @@
-# ClawDB SDK
+# Axonio SDK
 
-The official multi-language SDK, CLI, and framework adapters for **ClawDB**.
+SDKs, CLI, ROS2 package and framework adapters for **[Axonio](https://axonio.xyz)**: persistent memory for AI agents. Formerly ClawDB.
 
-ClawDB itself is implemented in Rust. For TypeScript, Python, and Go, the packages in this repository are gRPC clients that talk to a running `clawdb-server` process locally or to a hosted cloud endpoint. The Rust runtime is the engine layer underneath that server.
+The TypeScript, Python and Go packages are clients for the Axonio HTTP API. An API key alone connects them to the Axonio cloud; point them at a self-hosted `clawdb-server` with `AXONIO_URL`. The Rust runtime is the engine underneath that server.
 
-[![CI](https://github.com/clawdb/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/clawdb/sdk/actions/workflows/ci.yml)
+[![CI](https://github.com/hackcat29/axonio-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/hackcat29/axonio-sdk/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/axonio)](https://www.npmjs.com/package/axonio)
-[![PyPI](https://img.shields.io/pypi/v/clawdb)](https://pypi.org/project/clawdb/)
-[![crates.io](https://img.shields.io/crates/v/clawdb)](https://crates.io/crates/clawdb)
+[![PyPI](https://img.shields.io/pypi/v/axonio)](https://pypi.org/project/axonio/)
+[![Go](https://img.shields.io/badge/go-hackcat29%2Faxonio--sdk%2Fsdks%2Fgo-00ADD8)](https://pkg.go.dev/github.com/hackcat29/axonio-sdk/sdks/go)
 
 ---
 
@@ -21,9 +21,10 @@ ClawDB itself is implemented in Rust. For TypeScript, Python, and Go, the packag
 | [`axonio-openai-agents`](adapters/openai/) | TypeScript | OpenAI Agents SDK adapter |
 | [`axonio-vercel-ai`](adapters/vercel-ai/) | TypeScript | Vercel AI SDK adapter |
 | [`axonio-mcp`](sdks/mcp-adapter/) | TypeScript | MCP server (stdio transport) |
-| [`clawdb`](sdks/python/) | Python | Sync + async Python client |
+| [`axonio`](sdks/python/) | Python | Sync + async Python client |
+| [`axonio-ros2`](sdks/ros2/) | Python | ROS2 package: fleet-wide spatial memory for robots |
 | [`clawdb`](sdks/rust/) | Rust | Tokio async Rust client |
-| [`github.com/Claw-DB/claw-sdk/sdks/go`](sdks/go/) | Go | Go client |
+| [`github.com/hackcat29/axonio-sdk/sdks/go`](sdks/go/) | Go | Go client |
 
 ## Architecture
 
@@ -68,13 +69,13 @@ console.log(results[0].memory.content); // "Deploy at 3 PM UTC"
 ### Python
 
 ```python
-from clawdb import ClawDB
+from axonio import ClawDB  # also importable as Axonio
 
-db = ClawDB(endpoint="http://localhost:50050", agent_id="my-agent")
+db = ClawDB(api_key="ck_live_...", agent_id="my-agent")  # a key alone means the Axonio cloud
 
 memory_id = db.memory.remember("Deploy at 3 PM UTC", memory_type="task")
 results = db.memory.search("deploy schedule", top_k=5)
-print(results[0].memory.content)  # "Deploy at 3 PM UTC"
+print(results[0].content)  # "Deploy at 3 PM UTC"
 ```
 
 ### Rust
@@ -108,22 +109,24 @@ async fn main() -> clawdb::Result<()> {
 package main
 
 import (
-    "context"
-    "fmt"
-    "github.com/Claw-DB/claw-sdk/sdks/go"
+	"context"
+	"fmt"
+	"log"
+
+	axonio "github.com/hackcat29/axonio-sdk/sdks/go"
 )
 
 func main() {
-    db, _ := clawdb.New(clawdb.Options{
-        Endpoint: "http://localhost:50050",
-        AgentID:  "my-agent",
-    })
-    defer db.Close()
+	db, err := axonio.New() // AXONIO_API_KEY alone means the Axonio cloud
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
-    ctx := context.Background()
-    id, _ := db.Memory.Remember(ctx, "Deploy at 3 PM UTC", nil)
-    results, _ := db.Memory.Search(ctx, "deploy schedule", &clawdb.SearchOptions{TopK: 5})
-    fmt.Println(results[0].Memory.Content)
+	ctx := context.Background()
+	id, _ := db.Memory.Remember(ctx, "Deploy at 3 PM UTC", nil)
+	results, _ := db.Memory.Search(ctx, "deploy schedule", &axonio.SearchOptions{TopK: 5})
+	fmt.Println(id, len(results))
 }
 ```
 
@@ -164,10 +167,10 @@ const result = await generateText({ model, tools, prompt: 'What do you remember?
 ```json
 {
   "mcpServers": {
-    "clawdb": {
+    "axonio": {
       "command": "npx",
       "args": ["-y", "axonio-mcp"],
-      "env": { "CLAWDB_ENDPOINT": "http://localhost:50050", "CLAWDB_AGENT_ID": "my-agent" }
+      "env": { "AXONIO_API_KEY": "ck_live_...", "AXONIO_AGENT_ID": "my-agent" }
     }
   }
 }
