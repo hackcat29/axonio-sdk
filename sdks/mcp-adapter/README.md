@@ -1,20 +1,20 @@
-# @axonio/mcp-adapter
+# axonio-mcp
 
 Model Context Protocol server for [Axonio](https://axonio.xyz), over stdio.
 
-> Formerly `@axonio/mcp-adapter`. The `clawdb-mcp` command and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence. Tool names (`clawdb_*`) are unchanged so existing agents keep working.
+> Formerly `axonio-mcp`. The `clawdb-mcp` command and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence. Tool names (`clawdb_*`) are unchanged so existing agents keep working.
 
 ## Install
 
 ```bash
-npx -y @axonio/mcp-adapter
+npx -y axonio-mcp
 ```
 
 ## Claude Desktop
 
 ```bash
-npx -y @axonio/mcp-adapter --print-config
-npx -y @axonio/mcp-adapter --install-claude
+npx -y axonio-mcp --print-config
+npx -y axonio-mcp --install-claude
 ```
 
 ## Environment

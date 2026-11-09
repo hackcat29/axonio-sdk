@@ -5,14 +5,14 @@ import { homedir } from 'node:os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ClawDB, type SearchHit } from '@axonio/sdk';
+import { ClawDB, type SearchHit } from 'axonio';
 
 /** AXONIO_* wins over the older CLAWDB_* names. */
 function env(name: string): string | undefined {
   return process.env[`AXONIO_${name}`] ?? process.env[`CLAWDB_${name}`];
 }
 
-const PACKAGE_VERSION = '0.2.0';
+const PACKAGE_VERSION = '0.2.1';
 /** The hosted Axonio cloud (HTTP). The SDK picks its HTTP transport for it. */
 const CLOUD_ENDPOINT = 'https://api.axonio.xyz/api/v1/gateway';
 
@@ -52,7 +52,7 @@ function clawdbClaudeConfigBlock(): Record<string, unknown> {
     mcpServers: {
       axonio: {
         command: 'npx',
-        args: ['-y', '@axonio/mcp-adapter@latest'],
+        args: ['-y', 'axonio-mcp@latest'],
         env: serverEnv
       }
     }

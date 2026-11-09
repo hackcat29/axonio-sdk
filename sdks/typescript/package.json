@@ -1,5 +1,5 @@
 {
-  "name": "@axonio/sdk",
+  "name": "axonio",
   "version": "0.2.0",
   "description": "Persistent memory for AI agents: hybrid recall, branch and merge. TypeScript client for Axonio.",
   "license": "MIT",

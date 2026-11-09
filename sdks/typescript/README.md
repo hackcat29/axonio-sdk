@@ -1,13 +1,13 @@
-# @axonio/sdk
+# axonio
 
 Official TypeScript client for [Axonio](https://axonio.xyz): persistent memory for AI agents.
 
-> Formerly `@clawdb/sdk`. The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
+> Formerly `@clawdb/sdk` (the `ClawDB` class). The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
 
 ## Install
 
 ```bash
-npm install @axonio/sdk
+npm install axonio
 ```
 
 ## Quick Start
@@ -17,7 +17,7 @@ npm install @axonio/sdk
 Create an API key in the dashboard, then:
 
 ```ts
-import { Axonio } from '@axonio/sdk';
+import { Axonio } from 'axonio';
 
 // Talks HTTPS to https://api.axonio.xyz/api/v1/gateway, which routes to your
 // workspace's own ClawDB instance. `Axonio.fromEnv()` does the same when only
@@ -31,7 +31,7 @@ const db = new Axonio({
 ### Self-hosted
 
 ```ts
-import { Axonio } from '@axonio/sdk';
+import { Axonio } from 'axonio';
 
 // gRPC to your own clawdb-server. With no endpoint at all, the SDK downloads
 // and starts a local server for you.
