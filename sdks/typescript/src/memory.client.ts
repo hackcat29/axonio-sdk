@@ -1,5 +1,5 @@
-import { ClawDBValidationError } from '@clawdb/errors';
-import type { ClawDBSession, MemoryRecord, SearchResult } from '@clawdb/types';
+import { ClawDBValidationError } from 'axonio-errors';
+import type { ClawDBSession, MemoryRecord, SearchResult } from 'axonio-types';
 
 import { isUuid, normalizeMemoryRecord, normalizeSearchResults, withSession } from './internal';
 import type { ListOptions, MemoryUpdateInput, RememberOptions, SearchOptions, SessionExecutor, Transport } from './types';

@@ -1,11 +1,11 @@
-# @clawdb/anthropic
+# axonio-anthropic
 
 Anthropic Claude integration for ClawDB memory, branching, sync, reflection, and transactional tools.
 
 ## Install
 
 ```bash
-npm install @clawdb/anthropic @clawdb/sdk @anthropic-ai/sdk
+npm install axonio-anthropic axonio @anthropic-ai/sdk
 ```
 
 ## Exports
@@ -18,8 +18,8 @@ npm install @clawdb/anthropic @clawdb/sdk @anthropic-ai/sdk
 
 ```ts
 import Anthropic from '@anthropic-ai/sdk';
-import { ClawDB } from '@clawdb/sdk';
-import { clawdbTools, handleClawDBToolCall, withClawDBMemory } from '@clawdb/anthropic';
+import { ClawDB } from 'axonio';
+import { clawdbTools, handleClawDBToolCall, withClawDBMemory } from 'axonio-anthropic';
 
 const client = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'claude-agent' });
 const anthropic = withClawDBMemory(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! }), client);

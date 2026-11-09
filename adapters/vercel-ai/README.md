@@ -1,11 +1,11 @@
-# @clawdb/vercel-ai
+# axonio-vercel-ai
 
 Vercel AI SDK integration for ClawDB.
 
 ## Install
 
 ```bash
-npm install @clawdb/vercel-ai @clawdb/sdk ai
+npm install axonio-vercel-ai axonio ai
 ```
 
 ## Exports
@@ -18,8 +18,8 @@ npm install @clawdb/vercel-ai @clawdb/sdk ai
 
 ```ts
 import { generateText } from 'ai';
-import { ClawDB } from '@clawdb/sdk';
-import { clawdbTools, clawdbMiddleware } from '@clawdb/vercel-ai';
+import { ClawDB } from 'axonio';
+import { clawdbTools, clawdbMiddleware } from 'axonio-vercel-ai';
 
 const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'vercel-ai-agent' });
 

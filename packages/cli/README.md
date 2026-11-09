@@ -1,17 +1,17 @@
-# @clawdb/cli
+# axonio-cli
 
 Command line interface for provisioning ClawDB, managing local server state, and exercising the full API surface from a terminal.
 
 ## Install
 
 ```bash
-npm install -g @clawdb/cli
+npm install -g axonio-cli
 ```
 
 Or run it without installing:
 
 ```bash
-npx @clawdb/cli@latest <command>
+npx axonio-cli@latest <command>
 ```
 
 ## Quick Start

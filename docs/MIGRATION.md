@@ -9,7 +9,7 @@ official ClawDB SDKs.
 
 ## v0.1 → v0.1 SDK wrappers (initial SDK release)
 
-### TypeScript: direct proto stubs → `@clawdb/sdk`
+### TypeScript: direct proto stubs → `axonio`
 
 **Before** (raw gRPC):
 
@@ -23,10 +23,10 @@ req.setContent('Deploy at 3 PM');
 client.remember(req, (err, resp) => { ... });
 ```
 
-**After** (`@clawdb/sdk`):
+**After** (`axonio`):
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
+import { ClawDB } from 'axonio';
 const db = new ClawDB({ endpoint: 'http://localhost:50050' });
 await db.connect();
 const id = await db.memory.remember('Deploy at 3 PM');
@@ -35,7 +35,7 @@ const id = await db.memory.remember('Deploy at 3 PM');
 **Changes:**
 - All methods are now `async/await`-first — no callbacks.
 - Connection is managed by the SDK (`connect()` / `disconnect()`).
-- Proto types are not exported — use the TypeScript types from `@clawdb/types`.
+- Proto types are not exported — use the TypeScript types from `axonio-types`.
 
 ---
 
@@ -128,11 +128,11 @@ Old bare tokens are no longer accepted. Regenerate via the ClawDB dashboard.
 
 ## CLI package location and legacy wrapper migration
 
-The canonical CLI package is now `@clawdb/cli` in `packages/cli/`.
+The canonical CLI package is now `axonio-cli` in `packages/cli/`.
 
 If you previously referenced the legacy wrapper in `sdks/cli-wrapper/`, migrate to the canonical package:
 
-1. Install or link `@clawdb/cli` from `packages/cli/`.
+1. Install or link `axonio-cli` from `packages/cli/`.
 2. Use the `clawdb` command as before.
 3. Stop consuming `sdks/cli-wrapper/` for new development.
 

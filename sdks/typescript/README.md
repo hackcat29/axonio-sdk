@@ -2,7 +2,7 @@
 
 Official TypeScript client for [Axonio](https://axonio.xyz): persistent memory for AI agents.
 
-> Formerly `@clawdb/sdk` (the `ClawDB` class). The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
+> Formerly `axonio` (the `ClawDB` class). The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
 
 ## Install
 

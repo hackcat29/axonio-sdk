@@ -34,7 +34,7 @@ const EXPECTED_TOOL_NAMES = [
 function makeMockDb() {
   return {
     rememberTyped: vi.fn().mockResolvedValue('m-1')
-  } as unknown as import('@clawdb/sdk').ClawDB;
+  } as unknown as import('axonio').ClawDB;
 }
 
 describe('google genai adapter', () => {

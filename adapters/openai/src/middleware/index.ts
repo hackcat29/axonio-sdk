@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 import { createClawDBAgentTools } from '../tools/index.js';
 import { ClawDBToolHandler } from '../handlers/index.js';
 

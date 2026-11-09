@@ -1,5 +1,5 @@
-import { ClawDBTimeoutError } from '@clawdb/errors';
-import type { ClawDBSession, ReflectJob } from '@clawdb/types';
+import { ClawDBTimeoutError } from 'axonio-errors';
+import type { ClawDBSession, ReflectJob } from 'axonio-types';
 
 import { normalizeAgentProfile, normalizeReflectJob, sleep, withSession } from './internal';
 import type { AgentProfile, SessionExecutor, Transport } from './types';

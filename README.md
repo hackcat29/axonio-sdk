@@ -5,7 +5,7 @@ The official multi-language SDK, CLI, and framework adapters for **ClawDB**.
 ClawDB itself is implemented in Rust. For TypeScript, Python, and Go, the packages in this repository are gRPC clients that talk to a running `clawdb-server` process locally or to a hosted cloud endpoint. The Rust runtime is the engine layer underneath that server.
 
 [![CI](https://github.com/clawdb/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/clawdb/sdk/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@clawdb/sdk)](https://www.npmjs.com/package/@clawdb/sdk)
+[![npm](https://img.shields.io/npm/v/axonio)](https://www.npmjs.com/package/axonio)
 [![PyPI](https://img.shields.io/pypi/v/clawdb)](https://pypi.org/project/clawdb/)
 [![crates.io](https://img.shields.io/crates/v/clawdb)](https://crates.io/crates/clawdb)
 
@@ -15,12 +15,12 @@ ClawDB itself is implemented in Rust. For TypeScript, Python, and Go, the packag
 
 | Package | Language | Description |
 |---|---|---|
-| [`@clawdb/sdk`](sdks/typescript/) | TypeScript | Core gRPC client |
-| [`@clawdb/cli`](packages/cli/) | TypeScript | `clawdb` CLI |
-| [`@clawdb/langchain`](adapters/langchain/) | TypeScript | LangChain.js adapter |
-| [`@clawdb/openai-agents`](adapters/openai/) | TypeScript | OpenAI Agents SDK adapter |
-| [`@clawdb/vercel-ai`](adapters/vercel-ai/) | TypeScript | Vercel AI SDK adapter |
-| [`@clawdb/mcp-adapter`](sdks/mcp-adapter/) | TypeScript | MCP server (stdio transport) |
+| [`axonio`](sdks/typescript/) | TypeScript | Core gRPC client |
+| [`axonio-cli`](packages/cli/) | TypeScript | `clawdb` CLI |
+| [`axonio-langchain`](adapters/langchain/) | TypeScript | LangChain.js adapter |
+| [`axonio-openai-agents`](adapters/openai/) | TypeScript | OpenAI Agents SDK adapter |
+| [`axonio-vercel-ai`](adapters/vercel-ai/) | TypeScript | Vercel AI SDK adapter |
+| [`axonio-mcp`](sdks/mcp-adapter/) | TypeScript | MCP server (stdio transport) |
 | [`clawdb`](sdks/python/) | Python | Sync + async Python client |
 | [`clawdb`](sdks/rust/) | Rust | Tokio async Rust client |
 | [`github.com/Claw-DB/claw-sdk/sdks/go`](sdks/go/) | Go | Go client |
@@ -35,7 +35,7 @@ There are two layers in the ClawDB product:
 That means the non-Rust SDKs assume one of the following is true:
 
 - `clawdb-server` is already running locally on `http://localhost:50050`
-- you have run `npx @clawdb/cli@latest init` successfully to provision a local server
+- you have run `npx axonio-cli@latest init` successfully to provision a local server
 - you are pointing the SDK at a managed cloud endpoint
 
 The Rust surface is different from the other SDK tabs conceptually: Rust is the implementation layer the server is built on, while the non-Rust packages are network clients.
@@ -47,7 +47,7 @@ The Rust surface is different from the other SDK tabs conceptually: Rust is the 
 TypeScript, Python, and Go examples below assume `clawdb-server` is already running locally or that you are using a cloud endpoint. If you want the local path, start with:
 
 ```bash
-npx @clawdb/cli@latest init
+npx axonio-cli@latest init
 ```
 
 If auto-provision is unavailable in your environment, start `clawdb-server` manually and then use the SDKs against `http://localhost:50050`.
@@ -55,7 +55,7 @@ If auto-provision is unavailable in your environment, start `clawdb-server` manu
 ### TypeScript
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
+import { ClawDB } from 'axonio';
 
 const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'my-agent' });
 await db.connect();
@@ -134,7 +134,7 @@ func main() {
 ### LangChain.js
 
 ```ts
-import { ClawDBRetriever, ClawDBChatMessageHistory, createClawDBTools } from '@clawdb/langchain';
+import { ClawDBRetriever, ClawDBChatMessageHistory, createClawDBTools } from 'axonio-langchain';
 
 const retriever = new ClawDBRetriever({ client: db, topK: 10 });
 const history = new ClawDBChatMessageHistory({ client: db, sessionId: 'chat-123' });
@@ -144,7 +144,7 @@ const tools = createClawDBTools(db);
 ### OpenAI Agents SDK
 
 ```ts
-import { createClawDBAgentTools, ClawDBToolHandler, withClawDBMemory } from '@clawdb/openai-agents';
+import { createClawDBAgentTools, ClawDBToolHandler, withClawDBMemory } from 'axonio-openai-agents';
 
 const tools = createClawDBAgentTools(db, { enableBranching: true });
 const agent = withClawDBMemory(myAgent, db);
@@ -153,7 +153,7 @@ const agent = withClawDBMemory(myAgent, db);
 ### Vercel AI SDK
 
 ```ts
-import { clawdbTools, clawdbMiddleware } from '@clawdb/vercel-ai';
+import { clawdbTools, clawdbMiddleware } from 'axonio-vercel-ai';
 
 const tools = clawdbTools(db);
 const result = await generateText({ model, tools, prompt: 'What do you remember?' });
@@ -166,7 +166,7 @@ const result = await generateText({ model, tools, prompt: 'What do you remember?
   "mcpServers": {
     "clawdb": {
       "command": "npx",
-      "args": ["-y", "@clawdb/mcp-adapter"],
+      "args": ["-y", "axonio-mcp"],
       "env": { "CLAWDB_ENDPOINT": "http://localhost:50050", "CLAWDB_AGENT_ID": "my-agent" }
     }
   }
@@ -178,7 +178,7 @@ const result = await generateText({ model, tools, prompt: 'What do you remember?
 ## CLI
 
 ```bash
-npm install -g @clawdb/cli
+npm install -g axonio-cli
 clawdb init
 clawdb memory search "deploy schedule"
 clawdb branch fork my-experiment
@@ -189,7 +189,7 @@ clawdb status
 For ephemeral usage, prefer:
 
 ```bash
-npx @clawdb/cli@latest init
+npx axonio-cli@latest init
 ```
 
 ---
@@ -208,7 +208,7 @@ pnpm -r build
 pnpm -r test
 
 # Run integration tests (requires running clawdb-server)
-CLAWDB_INTEGRATION=1 pnpm --filter @clawdb/integration-tests test:integration
+CLAWDB_INTEGRATION=1 pnpm --filter axonio-integration-tests test:integration
 ```
 
 ---

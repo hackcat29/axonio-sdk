@@ -26,9 +26,9 @@ importers:
 
   adapters/anthropic:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
     devDependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
@@ -42,9 +42,9 @@ importers:
 
   adapters/google-genai:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
     devDependencies:
       '@google/genai':
         specifier: ^0.12.0
@@ -61,9 +61,9 @@ importers:
 
   adapters/langchain:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
       langchain:
         specifier: ^0.2.0
         version: 0.2.20(@aws-sdk/credential-provider-node@3.972.39)(axios@1.16.0)(fast-xml-parser@5.7.2)(ignore@7.0.5)(openai@6.36.0(ws@8.20.0)(zod@3.25.76))(ws@8.20.0)
@@ -83,9 +83,9 @@ importers:
 
   adapters/openai:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -102,9 +102,9 @@ importers:
 
   adapters/openclaw:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
       openclaw:
         specifier: '*'
         version: 2026.5.6(@types/express@5.0.6)
@@ -118,9 +118,9 @@ importers:
 
   adapters/vercel-ai:
     dependencies:
-      '@clawdb/sdk':
-        specifier: '>=0.1.5'
-        version: 0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: '>=0.2.0'
+        version: 0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -143,12 +143,12 @@ importers:
 
   packages/cli:
     dependencies:
-      '@clawdb/mcp-adapter':
-        specifier: 0.1.8
-        version: 0.1.8(@grpc/grpc-js@1.14.3)(ws@8.20.0)
-      '@clawdb/sdk':
-        specifier: 0.1.16
-        version: 0.1.16(@grpc/grpc-js@1.14.3)(ws@8.20.0)
+      axonio:
+        specifier: workspace:*
+        version: link:../../sdks/typescript
+      axonio-mcp:
+        specifier: workspace:*
+        version: link:../../sdks/mcp-adapter
       chalk:
         specifier: ^5.0.0
         version: 5.6.2
@@ -168,12 +168,12 @@ importers:
 
   packages/errors:
     dependencies:
-      '@clawdb/proto':
-        specifier: 0.1.3
-        version: 0.1.3
-      '@clawdb/types':
-        specifier: 0.1.3
-        version: 0.1.3
+      axonio-proto:
+        specifier: workspace:*
+        version: link:../proto
+      axonio-types:
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       vitest:
         specifier: ^1.6.1
@@ -199,12 +199,12 @@ importers:
 
   sdks/mcp-adapter:
     dependencies:
-      '@clawdb/sdk':
-        specifier: 0.1.16
-        version: 0.1.16(@grpc/grpc-js@1.14.3)(ws@8.20.0)
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(zod@3.25.76)
+      axonio:
+        specifier: workspace:*
+        version: link:../typescript
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -218,21 +218,21 @@ importers:
 
   sdks/typescript:
     dependencies:
-      '@clawdb/errors':
-        specifier: 0.1.4
-        version: 0.1.4
-      '@clawdb/proto':
-        specifier: 0.1.3
-        version: 0.1.3
-      '@clawdb/types':
-        specifier: 0.1.3
-        version: 0.1.3
       '@grpc/grpc-js':
         specifier: ^1.10.0
         version: 1.14.3
       '@grpc/proto-loader':
         specifier: ^0.7.0
         version: 0.7.15
+      axonio-errors:
+        specifier: workspace:*
+        version: link:../../packages/errors
+      axonio-proto:
+        specifier: workspace:*
+        version: link:../../packages/proto
+      axonio-types:
+        specifier: workspace:*
+        version: link:../../packages/types
       nice-grpc:
         specifier: ^2.1.0
         version: 2.1.16
@@ -255,16 +255,16 @@ importers:
 
   tests/integration:
     devDependencies:
-      '@clawdb/langchain':
-        specifier: workspace:*
-        version: link:../../adapters/langchain
-      '@clawdb/openai-agents':
-        specifier: workspace:*
-        version: link:../../adapters/openai
-      '@clawdb/sdk':
+      axonio:
         specifier: workspace:*
         version: link:../../sdks/typescript
-      '@clawdb/vercel-ai':
+      axonio-langchain:
+        specifier: workspace:*
+        version: link:../../adapters/langchain
+      axonio-openai-agents:
+        specifier: workspace:*
+        version: link:../../adapters/openai
+      axonio-vercel-ai:
         specifier: workspace:*
         version: link:../../adapters/vercel-ai
       vitest:
@@ -571,36 +571,11 @@ packages:
     resolution: {integrity: sha512-GgcWwRCs/xPtaqlMy8qRhPnZf9vlWcWZNHAitnVQ3yk7JmSralSiq5q07yaffYE8SogtDm7zFeKccx1QNVARpw==}
     engines: {node: '>= 20.12.0'}
 
-  '@clawdb/errors@0.1.0':
-    resolution: {integrity: sha512-Oqc4EI0xtSbyCZGl2jKnlkC1hKflBeb+8h3Vai2D2OYABm7Fc3maMD24AtwPY3pLFEmbuQwCcw5icfxwUsN+Iw==}
-
   '@clawdb/errors@0.1.4':
     resolution: {integrity: sha512-iLN641NVgoGsomggkVdW8zKjxDKsDsEFwOAU/G2VB9PS3n/tinEmF16JAgT2hIHYDAHVnMQyjENztKPCE/817Q==}
 
-  '@clawdb/mcp-adapter@0.1.8':
-    resolution: {integrity: sha512-dh9x4mNjjkyaguow9tony21kWTCmXNAoRlf8e6VaVncOw44Kw1SWuJUw901Qhoo/h0oqnqyEfQUvDntElPL2Bw==}
-    hasBin: true
-
-  '@clawdb/proto@0.1.0':
-    resolution: {integrity: sha512-sb+yozIWbG1EhCWehO8bY5w5xj897hz5YX8dAnRvecvnLgRS+65Cqw1oLWMFQ36LM+/FvcVceVBvqHaX2B1GZg==}
-
   '@clawdb/proto@0.1.3':
     resolution: {integrity: sha512-LTnO25dIPr03MUjPss0UTy5I7tWzWc5gP8gbVUpIGXIORcDySBFxPjGPxtgVzMOAr3MgOMgavjKz4QzamhIP5w==}
-
-  '@clawdb/sdk@0.1.16':
-    resolution: {integrity: sha512-NHLCJw1Erz0VQ2w3+eNhafacIXt/VlR2PUN2WNMuHfCOGGIYFF2LrtEG24bHWvcoRSPIAfVI9IBRWNO+Sfox/A==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      '@grpc/grpc-js': '>=1.10.0'
-
-  '@clawdb/sdk@0.1.5':
-    resolution: {integrity: sha512-N3l8VBSDwBqNR9TfM5U6lJRv/Gzpx6afPAGTQBQSrUy8bOKQVD3CTpthH8wfXoY374qftKu7iND1CC2kJi74jw==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      '@grpc/grpc-js': '>=1.10.0'
-
-  '@clawdb/types@0.1.0':
-    resolution: {integrity: sha512-swccva8ycM42qMEghp4UjA4t2+7u4jq+En3/kB15PbgQeJ5VBivNwYhDWwaUQo1EIHxTkDSoxHjA0XME+yzd6g==}
 
   '@clawdb/types@0.1.3':
     resolution: {integrity: sha512-DUZuNf95znCo0R7VbclYyC5BUlmH9ZtZB32x58mz2mc/NmJzG7qFbgEduTYfirBRJO2icjSWS5bQnTc+reHj1w==}
@@ -1883,6 +1858,12 @@ packages:
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
+
+  axonio@0.2.0:
+    resolution: {integrity: sha512-vcBkxNSaiVHmnsmYNSBKYct2v9ZwXvW0/0fRbwkTEJosX5RTyehM/PhEw7gEVZAZz9gP+dhiKiokPQt7WRl4aw==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@grpc/grpc-js': '>=1.10.0'
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -4926,66 +4907,16 @@ snapshots:
       fast-wrap-ansi: 0.2.0
       sisteransi: 1.0.5
 
-  '@clawdb/errors@0.1.0':
-    dependencies:
-      '@clawdb/proto': 0.1.0
-      '@clawdb/types': 0.1.0
-
   '@clawdb/errors@0.1.4':
     dependencies:
       '@clawdb/proto': 0.1.3
       '@clawdb/types': 0.1.3
-
-  '@clawdb/mcp-adapter@0.1.8(@grpc/grpc-js@1.14.3)(ws@8.20.0)':
-    dependencies:
-      '@clawdb/sdk': 0.1.16(@grpc/grpc-js@1.14.3)(ws@8.20.0)
-      '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - '@grpc/grpc-js'
-      - supports-color
-      - ws
-
-  '@clawdb/proto@0.1.0':
-    dependencies:
-      '@grpc/grpc-js': 1.14.3
-      '@grpc/proto-loader': 0.7.15
-      nice-grpc: 2.1.16
 
   '@clawdb/proto@0.1.3':
     dependencies:
       '@grpc/grpc-js': 1.14.3
       '@grpc/proto-loader': 0.7.15
       nice-grpc: 2.1.16
-
-  '@clawdb/sdk@0.1.16(@grpc/grpc-js@1.14.3)(ws@8.20.0)':
-    dependencies:
-      '@clawdb/errors': 0.1.4
-      '@clawdb/proto': 0.1.3
-      '@clawdb/types': 0.1.3
-      '@grpc/grpc-js': 1.14.3
-      '@grpc/proto-loader': 0.7.15
-      nice-grpc: 2.1.16
-      nice-grpc-web: 3.3.10(ws@8.20.0)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - ws
-
-  '@clawdb/sdk@0.1.5(@grpc/grpc-js@1.14.3)(ws@8.20.0)':
-    dependencies:
-      '@clawdb/errors': 0.1.0
-      '@clawdb/proto': 0.1.0
-      '@clawdb/types': 0.1.0
-      '@grpc/grpc-js': 1.14.3
-      '@grpc/proto-loader': 0.7.15
-      nice-grpc: 2.1.16
-      nice-grpc-web: 3.3.10(ws@8.20.0)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - ws
-
-  '@clawdb/types@0.1.0': {}
 
   '@clawdb/types@0.1.3': {}
 
@@ -6399,6 +6330,19 @@ snapshots:
       - debug
 
   axobject-query@4.1.0: {}
+
+  axonio@0.2.0(@grpc/grpc-js@1.14.3)(ws@8.20.0):
+    dependencies:
+      '@clawdb/errors': 0.1.4
+      '@clawdb/proto': 0.1.3
+      '@clawdb/types': 0.1.3
+      '@grpc/grpc-js': 1.14.3
+      '@grpc/proto-loader': 0.7.15
+      nice-grpc: 2.1.16
+      nice-grpc-web: 3.3.10(ws@8.20.0)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
 
   balanced-match@1.0.2: {}
 

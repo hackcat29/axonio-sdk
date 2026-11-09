@@ -1,5 +1,5 @@
-import { ClawDBTimeoutError, ClawDBUnavailableError, fromHttpResponse } from '@clawdb/errors';
-import type { ClawDBConfig, ClawDBSession } from '@clawdb/types';
+import { ClawDBTimeoutError, ClawDBUnavailableError, fromHttpResponse } from 'axonio-errors';
+import type { ClawDBConfig, ClawDBSession } from 'axonio-types';
 
 import { sleep } from './internal';
 import type { Transport } from './types';

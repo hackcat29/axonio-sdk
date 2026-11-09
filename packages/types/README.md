@@ -1,11 +1,11 @@
-# @clawdb/types
+# axonio-types
 
 Shared TypeScript domain types used across ClawDB SDKs and adapters.
 
 ## Install
 
 ```bash
-npm install @clawdb/types
+npm install axonio-types
 ```
 
 ## Exports
@@ -26,7 +26,7 @@ Core models:
 ## Example
 
 ```ts
-import type { MemoryRecord, MemoryType } from '@clawdb/types';
+import type { MemoryRecord, MemoryType } from 'axonio-types';
 
 const kind: MemoryType = 'task';
 const memory: Partial<MemoryRecord> = {
@@ -38,4 +38,4 @@ const memory: Partial<MemoryRecord> = {
 ## Notes
 
 - `createdAt`, `updatedAt`, and related temporal fields are represented as `Date` objects in the TypeScript surface.
-- Error codes here are the shared wire-level codes; `@clawdb/errors` extends them with client-only variants such as `SESSION_EXPIRED`.
+- Error codes here are the shared wire-level codes; `axonio-errors` extends them with client-only variants such as `SESSION_EXPIRED`.

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@clawdb/sdk': resolve(__dirname, '../../sdks/typescript/src/index.ts')
+      'axonio': resolve(__dirname, '../../sdks/typescript/src/index.ts')
     }
   },
   test: {

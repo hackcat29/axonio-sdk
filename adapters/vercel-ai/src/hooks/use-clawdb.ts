@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 
 export interface UseClawDBOptions {
   endpoint?: string;
@@ -26,7 +26,7 @@ export function useClawDB(options: UseClawDBOptions = {}): UseClawDBResult {
       setError(null);
 
       try {
-        const { ClawDB } = await import('@clawdb/sdk');
+        const { ClawDB } = await import('axonio');
         const client = new ClawDB(options.endpoint ? { endpoint: options.endpoint } : {});
 
         if (!cancelled) {

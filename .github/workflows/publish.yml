@@ -49,15 +49,15 @@ jobs:
       - run: pnpm -r build
 
       # Publish in dependency order
-      - run: pnpm --filter @clawdb/errors publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/types publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/proto publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/sdk publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/langchain publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/openai-agents publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/vercel-ai publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/mcp-adapter publish --access public --no-git-checks
-      - run: pnpm --filter @clawdb/cli publish --access public --no-git-checks
+      - run: pnpm --filter axonio-errors publish --access public --no-git-checks
+      - run: pnpm --filter axonio-types publish --access public --no-git-checks
+      - run: pnpm --filter axonio-proto publish --access public --no-git-checks
+      - run: pnpm --filter axonio publish --access public --no-git-checks
+      - run: pnpm --filter axonio-langchain publish --access public --no-git-checks
+      - run: pnpm --filter axonio-openai-agents publish --access public --no-git-checks
+      - run: pnpm --filter axonio-vercel-ai publish --access public --no-git-checks
+      - run: pnpm --filter axonio-mcp publish --access public --no-git-checks
+      - run: pnpm --filter axonio-cli publish --access public --no-git-checks
     env:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 import { z } from 'zod';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

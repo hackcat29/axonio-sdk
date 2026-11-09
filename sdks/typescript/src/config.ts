@@ -1,5 +1,5 @@
 import { readEnv } from './env';
-import type { ClawDBConfig } from '@clawdb/types';
+import type { ClawDBConfig } from 'axonio-types';
 
 export const DEFAULT_CONFIG: Required<ClawDBConfig> = {
   endpoint: 'http://localhost:50050',

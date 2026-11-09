@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 
 export interface LanguageModelMiddleware {
   transformParams?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;

@@ -1,4 +1,4 @@
-import type { ClawDBConfig, ClawDBSession } from '@clawdb/types';
+import type { ClawDBConfig, ClawDBSession } from 'axonio-types';
 
 import { BatchClient } from './batch';
 import { BranchClient } from './branch.client';

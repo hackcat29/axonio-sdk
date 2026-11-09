@@ -12,7 +12,7 @@ function env(name: string): string | undefined {
   return process.env[`AXONIO_${name}`] ?? process.env[`CLAWDB_${name}`];
 }
 
-const PACKAGE_VERSION = '0.2.1';
+const PACKAGE_VERSION = '0.2.2';
 /** The hosted Axonio cloud (HTTP). The SDK picks its HTTP transport for it. */
 const CLOUD_ENDPOINT = 'https://api.axonio.xyz/api/v1/gateway';
 

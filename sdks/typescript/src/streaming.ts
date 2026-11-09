@@ -1,4 +1,4 @@
-import type { ClawDBSession } from '@clawdb/types';
+import type { ClawDBSession } from 'axonio-types';
 
 import { normalizeEvent, sleep, withSession } from './internal';
 import type { ClawDBEvent, ClawDBEventMap, ClawDBEventType, Transport } from './types';

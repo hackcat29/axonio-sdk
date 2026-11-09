@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 
 export function clawdbTools(_client: ClawDB): Anthropic.Tool[] {
   return [

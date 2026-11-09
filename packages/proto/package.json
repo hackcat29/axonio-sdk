@@ -1,6 +1,6 @@
 {
-  "name": "@clawdb/proto",
-  "version": "0.1.4",
+  "name": "axonio-proto",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,5 +30,11 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hackcat29/axonio-sdk",
+    "directory": "packages/proto"
+  },
+  "homepage": "https://axonio.xyz"
 }

@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import ora from 'ora';
 import prompts from 'prompts';
-import clawdb, { ClawDB } from '@clawdb/sdk';
+import clawdb, { ClawDB } from 'axonio';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,8 +62,16 @@ export function detectProjectType(fileNames = cwdFileNames()): ProjectType {
   return 'unknown';
 }
 
+/** The hosted Axonio cloud (the old cloud.clawdb.dev host no longer exists). */
+const CLOUD_URL = 'https://api.axonio.xyz/api/v1/gateway';
+
+/** AXONIO_* wins over the older CLAWDB_* names, which still work. */
+function envVar(name: string, source: NodeJS.ProcessEnv = process.env): string | undefined {
+  return source[`AXONIO_${name}`] || source[`CLAWDB_${name}`] || undefined;
+}
+
 export function detectBackend(env: NodeJS.ProcessEnv = process.env): BackendType {
-  if (env.CLAWDB_API_KEY) return 'cloud';
+  if (envVar('API_KEY', env)) return 'cloud';
   if (env.DATABASE_URL) return 'postgres';
   return 'sqlite';
 }
@@ -71,15 +79,15 @@ export function detectBackend(env: NodeJS.ProcessEnv = process.env): BackendType
 export function formatSnippet(projectType: ProjectType): string {
   switch (projectType) {
     case 'node':
-      return "TypeScript:  import clawdb from '@clawdb/sdk'";
+      return "TypeScript:  import axonio from 'axonio'";
     case 'python':
-      return 'Python:      from clawdb import clawdb';
+      return 'Python:      from axonio import axonio';
     case 'go':
       return 'Go:          db, err := clawdb.New(clawdb.Options{})';
     case 'rust':
       return 'Rust:        let db = ClawDBClient::auto_provision().await?;';
     default:
-      return "TypeScript:  import clawdb from '@clawdb/sdk'";
+      return "TypeScript:  import axonio from 'axonio'";
   }
 }
 
@@ -181,7 +189,7 @@ function cliVersion(): string {
 async function getDb(override?: { endpoint?: string }): Promise<ClawDB> {
   let db: ClawDB;
   if (override?.endpoint) {
-    db = new ClawDB({ endpoint: override.endpoint, agentId: process.env.CLAWDB_AGENT_ID });
+    db = new ClawDB({ endpoint: override.endpoint, agentId: envVar('AGENT_ID') });
   } else {
     db = await clawdb();
   }
@@ -214,12 +222,12 @@ async function smokeTest(db: ClawDB): Promise<void> {
 export function mcpConfigBlock(host: EditorHost): Record<string, JsonRecord> {
   return {
     mcpServers: {
-      clawdb: {
+      axonio: {
         command: 'npx',
-        args: ['-y', '@clawdb/mcp-adapter@latest'],
+        args: ['-y', 'axonio-mcp@latest'],
         env: {
-          CLAWDB_ENDPOINT: 'http://localhost:50050',
-          CLAWDB_AGENT_ID: host,
+          AXONIO_URL: 'http://localhost:50050',
+          AXONIO_AGENT_ID: host,
         },
       },
     },
@@ -252,20 +260,20 @@ function hostConfigKey(host: EditorHost): string {
 
 // Build the server entry object shaped for each host's expected schema
 function hostServerEntry(host: EditorHost): Record<string, unknown> {
-  const env = { CLAWDB_ENDPOINT: 'http://localhost:50050', CLAWDB_AGENT_ID: host };
+  const env = { AXONIO_URL: 'http://localhost:50050', AXONIO_AGENT_ID: host };
   if (host === 'vscode') {
     // VS Code MCP (servers key) requires type: stdio
-    return { type: 'stdio', command: 'npx', args: ['-y', '@clawdb/mcp-adapter@latest'], env };
+    return { type: 'stdio', command: 'npx', args: ['-y', 'axonio-mcp@latest'], env };
   }
   if (host === 'zed') {
     // Zed uses context_servers with a nested command object
     return {
-      command: { path: 'npx', args: ['-y', '@clawdb/mcp-adapter@latest'] },
+      command: { path: 'npx', args: ['-y', 'axonio-mcp@latest'] },
       settings: { env },
     };
   }
   // Claude Desktop, Cursor, OpenClaw, Google Antigravity share the mcpServers format
-  return { command: 'npx', args: ['-y', '@clawdb/mcp-adapter@latest'], env };
+  return { command: 'npx', args: ['-y', 'axonio-mcp@latest'], env };
 }
 
 function mergeJsonFile(filePath: string, host: EditorHost): void {
@@ -313,7 +321,7 @@ function printPostInitTips(host: EditorHost | 'skip'): void {
     process.stdout.write(`  2. Look for ${chalk.cyan('ClawDB')} in your host's tool/MCP panel\n`);
     process.stdout.write(`  3. Your agent can now call memory, branch, and sync tools automatically\n`);
   }
-  process.stdout.write(`\n  Docs: ${chalk.underline('https://docs.clawdb.dev')}\n`);
+  process.stdout.write(`\n  Docs: ${chalk.underline('https://docs.axonio.xyz')}\n`);
   process.stdout.write(`  Status: ${chalk.cyan('clawdb status')}  ·  Help: ${chalk.cyan('clawdb --help')}\n\n`);
 }
 
@@ -349,7 +357,7 @@ async function initCommand(options: { cloud?: boolean; dataDir?: string }, jsonF
   const dotEnv = readDotEnvFile();
   const backend = options.cloud ? 'cloud' : detectBackend({ ...process.env, ...dotEnv });
 
-  const spinner = ora({ text: 'Initialising ClawDB', isSilent: isJsonMode(jsonFlag) }).start();
+  const spinner = ora({ text: 'Initialising Axonio', isSilent: isJsonMode(jsonFlag) }).start();
   try {
     if (!isJsonMode(jsonFlag)) {
       process.stdout.write(`${renderBanner()}\n`);
@@ -359,22 +367,22 @@ async function initCommand(options: { cloud?: boolean; dataDir?: string }, jsonF
     let db: ClawDB;
 
     if (options.cloud || backend === 'cloud') {
-      let apiKey = process.env.CLAWDB_API_KEY;
+      let apiKey = envVar('API_KEY');
       if (!apiKey) {
-        const response = await prompts({ type: 'password', name: 'value', message: 'Enter ClawDB cloud API key' });
+        const response = await prompts({ type: 'password', name: 'value', message: 'Enter Axonio API key' });
         apiKey = response.value;
         if (!apiKey) {
-          process.stdout.write('Open https://cloud.clawdb.dev/register to create an API key.\n');
+          process.stdout.write('Open https://axonio.xyz/signup to create an API key.\n');
           throw new Error('Cloud API key required for --cloud init');
         }
       }
-      process.env.CLAWDB_API_KEY = apiKey;
-      process.env.CLAWDB_URL = 'https://cloud.clawdb.dev';
+      process.env.AXONIO_API_KEY = apiKey;
+      process.env.AXONIO_URL = CLOUD_URL;
       db = await ClawDB.autoProvision();
-      envValues = { CLAWDB_URL: 'https://cloud.clawdb.dev', CLAWDB_API_KEY: apiKey };
+      envValues = { AXONIO_URL: CLOUD_URL, AXONIO_API_KEY: apiKey };
     } else {
       db = await ClawDB.autoProvision();
-      envValues = { CLAWDB_URL: db.endpoint };
+      envValues = { AXONIO_URL: db.endpoint };
     }
 
     await smokeTest(db);
@@ -397,7 +405,7 @@ async function initCommand(options: { cloud?: boolean; dataDir?: string }, jsonF
     process.stdout.write(`${chalk.green('✓')} Database initialised at ${options.dataDir ?? join(homedir(), '.clawdb')}/\n\n`);
     process.stdout.write('Add to your agent:\n\n');
     process.stdout.write(`  ${formatSnippet(projectType)}\n`);
-    process.stdout.write('  MCP:         clawdb mcp install-<claude|cursor|vscode|zed|openclaw|google-antigravity>\n\n');
+    process.stdout.write('  MCP:         axonio mcp install-<claude|cursor|vscode|zed|openclaw|google-antigravity>\n\n');
     process.stdout.write("Your agent now has a database. That's it.\n\n");
     await maybeInstallMcpHost();
     process.exit(0);
@@ -410,9 +418,9 @@ async function initCommand(options: { cloud?: boolean; dataDir?: string }, jsonF
 // ─── cloud login ─────────────────────────────────────────────────────────
 
 async function cloudLogin(jsonFlag = false): Promise<void> {
-  const response = await prompts({ type: 'password', name: 'apiKey', message: 'ClawDB cloud API key' });
+  const response = await prompts({ type: 'password', name: 'apiKey', message: 'Axonio API key' });
   if (!response.apiKey) throw new Error('API key is required');
-  writeClawdbEnv({ CLAWDB_URL: 'https://cloud.clawdb.dev', CLAWDB_API_KEY: response.apiKey });
+  writeClawdbEnv({ AXONIO_URL: CLOUD_URL, AXONIO_API_KEY: response.apiKey });
   writeOutput({ ok: true, cloud: true }, jsonFlag);
 }
 
@@ -779,7 +787,7 @@ function registerTxCommands(program: Command): void {
 async function main(): Promise<void> {
   const program = new Command();
   const version = cliVersion();
-  program.name('clawdb').description('ClawDB command line interface').version(version);
+  program.name('axonio').description('Axonio command line interface').version(version);
 
   // Ensure each command tears down the SDK channel watcher to avoid
   // late unhandled gRPC timeout events and hanging CLI processes.
@@ -824,12 +832,14 @@ async function main(): Promise<void> {
   const cloud = program.command('cloud').description('Cloud account management');
   cloud.command('login').option('--json', 'JSON output').action(async (options: { json?: boolean }) => cloudLogin(options.json));
   cloud.command('logout').option('--json', 'JSON output').action((options: { json?: boolean }) => {
-    writeClawdbEnv({ CLAWDB_URL: '', CLAWDB_API_KEY: '' });
+    writeClawdbEnv({ AXONIO_URL: '', AXONIO_API_KEY: '' });
     writeOutput({ loggedOut: true }, options.json);
   });
   cloud.command('status').option('--json', 'JSON output').action((options: { json?: boolean }) => {
     const env = existsSync(envFilePath()) ? readFileSync(envFilePath(), 'utf8') : '';
-    writeOutput({ configured: env.includes('CLAWDB_API_KEY=') }, options.json);
+    // Configured means a non-empty key: logout leaves the line in place, empty.
+    const configured = env.split('\n').some((line) => /^(AXONIO|CLAWDB)_API_KEY=.+/.test(line.trim()));
+    writeOutput({ configured }, options.json);
   });
 
   registerMcpCommands(program);

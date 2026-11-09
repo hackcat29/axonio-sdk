@@ -1,11 +1,11 @@
-# @clawdb/openai-agents
+# axonio-openai-agents
 
 OpenAI Agents SDK integration for ClawDB.
 
 ## Install
 
 ```bash
-npm install @clawdb/openai-agents @clawdb/sdk @openai/agents
+npm install axonio-openai-agents axonio @openai/agents
 ```
 
 ## Exports
@@ -17,8 +17,8 @@ npm install @clawdb/openai-agents @clawdb/sdk @openai/agents
 ## Quick Start
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
-import { createClawDBAgentTools, ClawDBToolHandler } from '@clawdb/openai-agents';
+import { ClawDB } from 'axonio';
+import { createClawDBAgentTools, ClawDBToolHandler } from 'axonio-openai-agents';
 
 const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'openai-agent' });
 const tools = createClawDBAgentTools(db);

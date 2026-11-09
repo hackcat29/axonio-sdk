@@ -11,13 +11,13 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ClawDB } from '@clawdb/sdk';
-import { ClawDBRetriever } from '@clawdb/langchain';
-import { ClawDBChatMessageHistory } from '@clawdb/langchain';
-import { createClawDBTools as createLCTools } from '@clawdb/langchain';
-import { createClawDBAgentTools } from '@clawdb/openai-agents';
-import { ClawDBToolHandler } from '@clawdb/openai-agents';
-import { clawdbTools } from '@clawdb/vercel-ai';
+import { ClawDB } from 'axonio';
+import { ClawDBRetriever } from 'axonio-langchain';
+import { ClawDBChatMessageHistory } from 'axonio-langchain';
+import { createClawDBTools as createLCTools } from 'axonio-langchain';
+import { createClawDBAgentTools } from 'axonio-openai-agents';
+import { ClawDBToolHandler } from 'axonio-openai-agents';
+import { clawdbTools } from 'axonio-vercel-ai';
 
 const INTEGRATION = !!process.env['CLAWDB_INTEGRATION'];
 const ENDPOINT = process.env['CLAWDB_TEST_ENDPOINT']?.trim();

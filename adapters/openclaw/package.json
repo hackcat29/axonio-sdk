@@ -1,6 +1,6 @@
 {
-  "name": "@clawdb/openclaw",
-  "version": "0.1.4",
+  "name": "axonio-openclaw",
+  "version": "0.2.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -18,7 +18,7 @@
     "lint": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@clawdb/sdk": ">=0.1.5",
+    "axonio": ">=0.2.0",
     "openclaw": "*"
   },
   "devDependencies": {
@@ -27,5 +27,15 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hackcat29/axonio-sdk",
+    "directory": "adapters/openclaw"
+  },
+  "homepage": "https://axonio.xyz",
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

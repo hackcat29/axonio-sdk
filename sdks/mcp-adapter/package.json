@@ -1,6 +1,6 @@
 {
   "name": "axonio-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "bin": {
     "axonio-mcp": "./dist/index.js",
@@ -24,7 +24,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "zod": "^3.23.8",
-    "axonio": "0.2.0"
+    "axonio": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.2.4",

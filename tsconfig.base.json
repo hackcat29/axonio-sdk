@@ -13,10 +13,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@clawdb/proto": ["packages/proto/src/index.ts"],
-      "@clawdb/types": ["packages/types/src/index.ts"],
-      "@clawdb/errors": ["packages/errors/src/index.ts"],
-      "@clawdb/sdk": ["sdks/typescript/src/index.ts"]
+      "axonio-proto": ["packages/proto/src/index.ts"],
+      "axonio-types": ["packages/types/src/index.ts"],
+      "axonio-errors": ["packages/errors/src/index.ts"],
+      "axonio": ["sdks/typescript/src/index.ts"]
     },
     "types": ["vitest/globals", "node"]
   }

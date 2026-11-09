@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 
 /**
  * Dispatches OpenAI Agents SDK tool calls to the ClawDB client.

@@ -64,7 +64,7 @@ function makeMockDb() {
       }
     ]),
     deleteMemory: vi.fn().mockResolvedValue(true)
-  } as unknown as import('@clawdb/sdk').ClawDB;
+  } as unknown as import('axonio').ClawDB;
 }
 
 describe('langchain adapter', () => {

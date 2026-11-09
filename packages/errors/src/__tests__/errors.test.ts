@@ -14,7 +14,7 @@ import {
   fromHttpResponse
 } from '../index';
 
-describe('@clawdb/errors', () => {
+describe('axonio-errors', () => {
   it('serializes base errors with toJSON', () => {
     const error = new ClawDBError('INTERNAL', 'boom', { trace: true }, 'req-1');
 

@@ -1,11 +1,11 @@
-# @clawdb/errors
+# axonio-errors
 
 Shared ClawDB error classes for TypeScript clients and adapters.
 
 ## Install
 
 ```bash
-npm install @clawdb/errors
+npm install axonio-errors
 ```
 
 ## Exports
@@ -27,7 +27,7 @@ Types:
 ## Example
 
 ```ts
-import { ClawDBError, ClawDBNotFoundError } from '@clawdb/errors';
+import { ClawDBError, ClawDBNotFoundError } from 'axonio-errors';
 
 try {
   throw new ClawDBNotFoundError('Memory not found', 'memory', 'mem_123');

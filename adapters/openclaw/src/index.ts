@@ -1,5 +1,5 @@
-import type { ClawDB, SearchHit } from '@clawdb/sdk';
-import { ClawDB as ClawDBClient } from '@clawdb/sdk';
+import type { ClawDB, SearchHit } from 'axonio';
+import { ClawDB as ClawDBClient } from 'axonio';
 
 export interface OpenClawLogger {
   info(message: string): void;

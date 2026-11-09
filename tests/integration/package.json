@@ -1,5 +1,5 @@
 {
-  "name": "@clawdb/integration-tests",
+  "name": "axonio-integration-tests",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,9 +9,9 @@
   },
   "devDependencies": {
     "vitest": "^1.6.0",
-    "@clawdb/sdk": "workspace:*",
-    "@clawdb/langchain": "workspace:*",
-    "@clawdb/openai-agents": "workspace:*",
-    "@clawdb/vercel-ai": "workspace:*"
+    "axonio": "workspace:*",
+    "axonio-langchain": "workspace:*",
+    "axonio-openai-agents": "workspace:*",
+    "axonio-vercel-ai": "workspace:*"
   }
 }

@@ -51,7 +51,7 @@ function makeMockDb() {
     recall: vi.fn().mockResolvedValue([]),
     branch: vi.fn().mockResolvedValue({ branchId: 'br-1', name: 'branch' }),
     merge: vi.fn().mockResolvedValue({ success: true, applied: 1, conflicts: 0 })
-  } as unknown as import('@clawdb/sdk').ClawDB;
+  } as unknown as import('axonio').ClawDB;
 }
 
 describe('openai adapter', () => {

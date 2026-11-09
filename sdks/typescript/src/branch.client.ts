@@ -1,4 +1,4 @@
-import type { BranchInfo, BranchStatus, ClawDBSession } from '@clawdb/types';
+import type { BranchInfo, BranchStatus, ClawDBSession } from 'axonio-types';
 
 import { evaluateBranchDiff, normalizeBranchInfo, normalizeDiffResult, normalizeMergeResult, withSession } from './internal';
 import type { BranchEvaluation, DiffResult, MergeResult, SessionExecutor, Transport } from './types';

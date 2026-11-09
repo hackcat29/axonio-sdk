@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 
 /**
  * A tool definition compatible with the OpenAI Agents SDK (Responses API format).

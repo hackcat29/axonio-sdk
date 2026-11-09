@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 
 /**

@@ -1,4 +1,4 @@
-import type { ClawDB, SearchHit } from '@clawdb/sdk';
+import type { ClawDB, SearchHit } from 'axonio';
 import { Document } from '@langchain/core/documents';
 import { BaseRetriever } from '@langchain/core/retrievers';
 import type { CallbackManagerForRetrieverRun } from '@langchain/core/callbacks/manager';

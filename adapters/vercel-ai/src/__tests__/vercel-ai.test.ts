@@ -48,7 +48,7 @@ function makeMockDb() {
       }
     ]),
     recall: vi.fn().mockResolvedValue([{ id: 'm-1' }])
-  } as unknown as import('@clawdb/sdk').ClawDB;
+  } as unknown as import('axonio').ClawDB;
 }
 
 describe('vercel ai adapter', () => {

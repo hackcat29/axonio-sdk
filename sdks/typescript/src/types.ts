@@ -1,4 +1,4 @@
-import type { ClawDBError } from '@clawdb/errors';
+import type { ClawDBError } from 'axonio-errors';
 import type {
   BranchInfo,
   BranchStatus,
@@ -9,7 +9,7 @@ import type {
   ReflectJob,
   SearchResult,
   SyncResult
-} from '@clawdb/types';
+} from 'axonio-types';
 
 export type MetadataFilter =
   | { [key: string]: unknown }

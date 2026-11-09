@@ -1,5 +1,5 @@
-import type { GrpcMetadata, GrpcStatus } from '@clawdb/proto';
-import type { ClawDBErrorCode as SharedErrorCode } from '@clawdb/types';
+import type { GrpcMetadata, GrpcStatus } from 'axonio-proto';
+import type { ClawDBErrorCode as SharedErrorCode } from 'axonio-types';
 
 export type ClawDBErrorCode = SharedErrorCode | 'SESSION_EXPIRED' | 'INVALID_API_KEY';
 

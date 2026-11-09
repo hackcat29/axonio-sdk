@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 import { BaseChatMessageHistory } from '@langchain/core/chat_history';
 import { AIMessage, HumanMessage, type BaseMessage } from '@langchain/core/messages';
 

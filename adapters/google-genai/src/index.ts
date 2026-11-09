@@ -1,4 +1,4 @@
-import type { ClawDB } from '@clawdb/sdk';
+import type { ClawDB } from 'axonio';
 import type { FunctionDeclaration, FunctionCall, FunctionResponse, GenerativeModel } from '@google/generative-ai';
 
 export function clawdbTools(_client: ClawDB): FunctionDeclaration[] {

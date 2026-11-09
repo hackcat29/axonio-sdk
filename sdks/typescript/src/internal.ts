@@ -6,8 +6,8 @@ import {
   ClawDBUnavailableError,
   fromGrpcStatus,
   fromHttpResponse
-} from '@clawdb/errors';
-import type { ClawDBSession, MemoryRecord, ReflectJob, SyncResult } from '@clawdb/types';
+} from 'axonio-errors';
+import type { ClawDBSession, MemoryRecord, ReflectJob, SyncResult } from 'axonio-types';
 
 import type { AgentProfile, BatchOp, BranchEvaluation, ClawDBEvent, DiffResult, MergeConflict, MergeResult } from './types';
 

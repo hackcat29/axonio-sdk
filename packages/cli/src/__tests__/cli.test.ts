@@ -4,22 +4,25 @@ import { detectProjectType, detectBackend, formatSnippet, mcpConfigBlock } from 
 describe('cli helpers', () => {
   it('detects backend from env', () => {
     expect(detectBackend({ DATABASE_URL: 'postgres://x' })).toBe('postgres');
+    expect(detectBackend({ AXONIO_API_KEY: 'k' })).toBe('cloud');
+    // The older name keeps working.
     expect(detectBackend({ CLAWDB_API_KEY: 'k' })).toBe('cloud');
+    expect(detectBackend({ AXONIO_API_KEY: '', CLAWDB_API_KEY: '' })).not.toBe('cloud');
     expect(detectBackend({})).toBe('sqlite');
   });
 
   it('formats snippets', () => {
-    expect(formatSnippet('node')).toContain("import clawdb from '@clawdb/sdk'");
-    expect(formatSnippet('python')).toContain('from clawdb import clawdb');
+    expect(formatSnippet('node')).toContain("import axonio from 'axonio'");
+    expect(formatSnippet('python')).toContain('from axonio import axonio');
   });
 
   it('builds editor config block', () => {
-    const claude = mcpConfigBlock('claude') as { mcpServers: { clawdb: { command: string; env: { CLAWDB_AGENT_ID: string } } } };
-    expect(claude.mcpServers.clawdb.command).toBe('npx');
-    expect(claude.mcpServers.clawdb.env.CLAWDB_AGENT_ID).toBe('claude');
+    const claude = mcpConfigBlock('claude') as { mcpServers: { axonio: { command: string; env: { AXONIO_AGENT_ID: string } } } };
+    expect(claude.mcpServers.axonio.command).toBe('npx');
+    expect(claude.mcpServers.axonio.env.AXONIO_AGENT_ID).toBe('claude');
 
-    const zed = mcpConfigBlock('zed') as { mcpServers: { clawdb: { env: { CLAWDB_AGENT_ID: string } } } };
-    expect(zed.mcpServers.clawdb.env.CLAWDB_AGENT_ID).toBe('zed');
+    const zed = mcpConfigBlock('zed') as { mcpServers: { axonio: { env: { AXONIO_AGENT_ID: string } } } };
+    expect(zed.mcpServers.axonio.env.AXONIO_AGENT_ID).toBe('zed');
   });
 
   it('detects project type from filenames', () => {

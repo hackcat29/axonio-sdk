@@ -31,11 +31,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @clawdb/sdk build
-      - run: pnpm --filter @clawdb/sdk test run
-      - run: pnpm --filter @clawdb/langchain test run
-      - run: pnpm --filter @clawdb/openai-agents test run
-      - run: pnpm --filter @clawdb/vercel-ai test run
+      - run: pnpm --filter axonio build
+      - run: pnpm --filter axonio test run
+      - run: pnpm --filter axonio-langchain test run
+      - run: pnpm --filter axonio-openai-agents test run
+      - run: pnpm --filter axonio-vercel-ai test run
 
   type-check:
     name: TypeScript type-check
@@ -143,5 +143,5 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @clawdb/cli build
-      - run: pnpm --filter @clawdb/cli test run || true
+      - run: pnpm --filter axonio-cli build
+      - run: pnpm --filter axonio-cli test run || true

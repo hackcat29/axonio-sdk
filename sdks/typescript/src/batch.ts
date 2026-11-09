@@ -1,5 +1,5 @@
-import { ClawDBValidationError } from '@clawdb/errors';
-import type { ClawDBSession } from '@clawdb/types';
+import { ClawDBValidationError } from 'axonio-errors';
+import type { ClawDBSession } from 'axonio-types';
 
 import { normalizeBatchError, withSession } from './internal';
 import type { BatchOp, BatchResult, RememberOptions, SessionExecutor, Transport } from './types';

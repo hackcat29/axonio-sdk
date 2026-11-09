@@ -1,5 +1,5 @@
-import { ClawDBAuthError, ClawDBError, ClawDBInternalError } from '@clawdb/errors';
-import type { ClawDBSession } from '@clawdb/types';
+import { ClawDBAuthError, ClawDBError, ClawDBInternalError } from 'axonio-errors';
+import type { ClawDBSession } from 'axonio-types';
 
 import { normalizeBatchError, normalizeSession } from './internal';
 import type { SessionCreateOptions, Transport } from './types';

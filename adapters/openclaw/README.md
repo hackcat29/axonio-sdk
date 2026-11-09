@@ -1,11 +1,11 @@
-# @clawdb/openclaw
+# axonio-openclaw
 
 OpenClaw plugin for ClawDB-backed memory retrieval, persistence, branching, sync, reflection, and transactions.
 
 ## Install
 
 ```bash
-npm install @clawdb/openclaw @clawdb/sdk openclaw
+npm install axonio-openclaw axonio openclaw
 ```
 
 ## Exports
@@ -17,7 +17,7 @@ npm install @clawdb/openclaw @clawdb/sdk openclaw
 ## Quick Start
 
 ```ts
-import { withClawDB } from '@clawdb/openclaw';
+import { withClawDB } from 'axonio-openclaw';
 
 const agent = withClawDB(myAgent, {
   autoStore: true,

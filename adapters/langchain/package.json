@@ -1,6 +1,6 @@
 {
-  "name": "@clawdb/langchain",
-  "version": "0.1.5",
+  "name": "axonio-langchain",
+  "version": "0.2.0",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,7 +21,7 @@
     "zod": "^3.23.8"
   },
   "peerDependencies": {
-    "@clawdb/sdk": ">=0.1.5",
+    "axonio": ">=0.2.0",
     "@langchain/core": "^0.2.0",
     "langchain": "^0.2.0"
   },
@@ -37,5 +37,15 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hackcat29/axonio-sdk",
+    "directory": "adapters/langchain"
+  },
+  "homepage": "https://axonio.xyz",
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

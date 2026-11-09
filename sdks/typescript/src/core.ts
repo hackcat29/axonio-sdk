@@ -701,7 +701,7 @@ function deriveAgentId(): string {
 }
 
 export class ClawDB extends EventEmitter {
-  public static readonly version: string = '0.2.0';
+  public static readonly version: string = '0.2.1';
 
   readonly endpoint: string;
   readonly apiKey?: string;

@@ -1,11 +1,11 @@
-# @clawdb/google-genai
+# axonio-google-genai
 
 Google Generative AI integration for ClawDB tools and automatic memory context injection.
 
 ## Install
 
 ```bash
-npm install @clawdb/google-genai @clawdb/sdk @google/generative-ai
+npm install axonio-google-genai axonio @google/generative-ai
 ```
 
 ## Exports
@@ -18,8 +18,8 @@ npm install @clawdb/google-genai @clawdb/sdk @google/generative-ai
 
 ```ts
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ClawDB } from '@clawdb/sdk';
-import { clawdbTools, handleClawDBFunctionCall, withClawDBMemory } from '@clawdb/google-genai';
+import { ClawDB } from 'axonio';
+import { clawdbTools, handleClawDBFunctionCall, withClawDBMemory } from 'axonio-google-genai';
 
 const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'gemini-agent' });
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);

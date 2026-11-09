@@ -1,11 +1,11 @@
-# @clawdb/langchain
+# axonio-langchain
 
 LangChain.js integration for ClawDB retrieval, chat history, and tools.
 
 ## Install
 
 ```bash
-npm install @clawdb/langchain @clawdb/sdk @langchain/core langchain
+npm install axonio-langchain axonio @langchain/core langchain
 ```
 
 ## Exports
@@ -18,8 +18,8 @@ npm install @clawdb/langchain @clawdb/sdk @langchain/core langchain
 ## Quick Start
 
 ```ts
-import { ClawDB } from '@clawdb/sdk';
-import { ClawDBRetriever, ClawDBChatMessageHistory, createClawDBTools } from '@clawdb/langchain';
+import { ClawDB } from 'axonio';
+import { ClawDBRetriever, ClawDBChatMessageHistory, createClawDBTools } from 'axonio-langchain';
 
 const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'langchain-agent' });
 

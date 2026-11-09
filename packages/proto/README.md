@@ -1,11 +1,11 @@
-# @clawdb/proto
+# axonio-proto
 
 Generated protobuf and gRPC bindings used by the TypeScript SDK and supporting packages.
 
 ## Install
 
 ```bash
-npm install @clawdb/proto
+npm install axonio-proto
 ```
 
 ## Exports
@@ -16,7 +16,7 @@ npm install @clawdb/proto
 ## Example
 
 ```ts
-import { ClawDBServiceDefinition } from '@clawdb/proto';
+import { ClawDBServiceDefinition } from 'axonio-proto';
 
 console.log(Object.keys(ClawDBServiceDefinition.methods));
 ```
@@ -24,11 +24,11 @@ console.log(Object.keys(ClawDBServiceDefinition.methods));
 ## Regenerating Bindings
 
 ```bash
-pnpm --filter @clawdb/proto generate
-pnpm --filter @clawdb/proto build
+pnpm --filter axonio-proto generate
+pnpm --filter axonio-proto build
 ```
 
 ## Notes
 
 - This package is primarily intended for SDK authors and transport-layer integrations.
-- Application code should usually depend on `@clawdb/sdk` instead of using protobuf bindings directly.
+- Application code should usually depend on `axonio` instead of using protobuf bindings directly.

@@ -1,4 +1,4 @@
-import type { ClawDBSession, SyncResult } from '@clawdb/types';
+import type { ClawDBSession, SyncResult } from 'axonio-types';
 
 import { normalizeSyncResult, toDate, withSession } from './internal';
 import type { SessionExecutor, SyncOptions, SyncStatus, Transport } from './types';
