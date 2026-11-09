@@ -217,6 +217,12 @@ export interface MergeResponse {
   conflicts: number;
   durationMs: number;
   requestId: string;
+  /**
+   * JSON-encoded Vec<MergeConflict> (claw-branch) — entity_id, entity_type,
+   * base/ours/theirs values, and conflicting_fields per conflict. `conflicts`
+   * above stays a plain count for callers that only need the number.
+   */
+  conflictsJson: string;
 }
 
 export interface DiffRequest {
@@ -3327,7 +3333,7 @@ export const MergeRequest = {
 };
 
 function createBaseMergeResponse(): MergeResponse {
-  return { success: false, applied: 0, skipped: 0, conflicts: 0, durationMs: 0, requestId: "" };
+  return { success: false, applied: 0, skipped: 0, conflicts: 0, durationMs: 0, requestId: "", conflictsJson: "" };
 }
 
 export const MergeResponse = {
@@ -3349,6 +3355,9 @@ export const MergeResponse = {
     }
     if (message.requestId !== "") {
       writer.uint32(50).string(message.requestId);
+    }
+    if (message.conflictsJson !== "") {
+      writer.uint32(58).string(message.conflictsJson);
     }
     return writer;
   },
@@ -3402,6 +3411,13 @@ export const MergeResponse = {
 
           message.requestId = reader.string();
           continue;
+        case 7:
+          if (tag !== 58) {
+            break;
+          }
+
+          message.conflictsJson = reader.string();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3419,6 +3435,7 @@ export const MergeResponse = {
       conflicts: isSet(object.conflicts) ? globalThis.Number(object.conflicts) : 0,
       durationMs: isSet(object.durationMs) ? globalThis.Number(object.durationMs) : 0,
       requestId: isSet(object.requestId) ? globalThis.String(object.requestId) : "",
+      conflictsJson: isSet(object.conflictsJson) ? globalThis.String(object.conflictsJson) : "",
     };
   },
 
@@ -3442,6 +3459,9 @@ export const MergeResponse = {
     if (message.requestId !== "") {
       obj.requestId = message.requestId;
     }
+    if (message.conflictsJson !== "") {
+      obj.conflictsJson = message.conflictsJson;
+    }
     return obj;
   },
 
@@ -3456,6 +3476,7 @@ export const MergeResponse = {
     message.conflicts = object.conflicts ?? 0;
     message.durationMs = object.durationMs ?? 0;
     message.requestId = object.requestId ?? "";
+    message.conflictsJson = object.conflictsJson ?? "";
     return message;
   },
 };

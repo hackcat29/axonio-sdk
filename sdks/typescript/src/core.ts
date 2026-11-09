@@ -59,6 +59,10 @@ export interface MergeResult {
   conflicts: number;
   durationMs: number;
   requestId?: string;
+  /** JSON-encoded array of per-conflict detail (entity_id, entity_type,
+   * base/ours/theirs values, conflicting_fields) from claw-branch. Opaque —
+   * `conflicts` above stays the plain count for existing callers. */
+  conflictsJson?: string;
 }
 
 export interface DiffResult {
@@ -915,6 +919,7 @@ export class ClawDB extends EventEmitter {
       conflicts: Number(r.conflicts ?? 0),
       durationMs: Number(r.duration_ms ?? r.durationMs ?? 0),
       requestId: String(r.request_id ?? r.requestId ?? ''),
+      conflictsJson: String(r.conflicts_json ?? r.conflictsJson ?? ''),
     };
   }
 

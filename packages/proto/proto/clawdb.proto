@@ -240,6 +240,10 @@ message MergeResponse {
   uint32 conflicts = 4;
   uint64 duration_ms = 5;
   string request_id = 6;
+  // JSON-encoded Vec<MergeConflict> (claw-branch) — entity_id, entity_type,
+  // base/ours/theirs values, and conflicting_fields per conflict. `conflicts`
+  // above stays a plain count for callers that only need the number.
+  string conflicts_json = 7;
 }
 
 message DiffRequest {
