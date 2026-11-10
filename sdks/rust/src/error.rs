@@ -1,76 +1,95 @@
 use thiserror::Error;
 
-/// All errors that can be returned by the ClawDB Rust SDK.
+/// Everything a call can fail with.
 #[derive(Debug, Error)]
-pub enum SdkError {
-    #[error("Authentication failed: {0}")]
+pub enum Error {
+    /// The API key or session was rejected.
+    #[error("authentication failed: {0}")]
     Auth(String),
 
-    #[error("Access denied: {resource}/{action}")]
-    AccessDenied { resource: String, action: String },
+    /// The key is valid but lacks the scope or plan for this call.
+    #[error("access denied: {0}")]
+    AccessDenied(String),
 
-    #[error("{entity_type} not found: {entity_id}")]
-    NotFound { entity_type: String, entity_id: String },
+    #[error("not found: {0}")]
+    NotFound(String),
 
-    #[error("Rate limited; retry after {retry_after_ms}ms")]
+    #[error("rate limited; retry after {retry_after_ms}ms")]
     RateLimit { retry_after_ms: u64 },
 
-    #[error("Service unavailable: {0}")]
+    #[error("service unavailable: {0}")]
     Unavailable(String),
 
-    #[error("Request timed out after {timeout_ms}ms")]
+    #[error("request timed out after {timeout_ms}ms")]
     Timeout { timeout_ms: u64 },
 
-    #[error("Validation error on field `{field}`: {constraint}")]
+    #[error("invalid `{field}`: {constraint}")]
     Validation { field: String, constraint: String },
 
-    #[error("Configuration error: {0}")]
+    #[error("configuration error: {0}")]
     Config(String),
 
-    #[error("HTTP error {status}: {body}")]
+    /// Any other error response.
+    #[error("HTTP {status}: {body}")]
     Http { status: u16, body: String },
 
     #[error("JSON error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("Invalid URL: {0}")]
+    #[error("invalid URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
 
-    #[error("Internal error: {0}")]
-    Internal(String),
-
-    #[cfg(feature = "http")]
-    #[error("Reqwest error: {0}")]
-    Reqwest(#[from] reqwest::Error),
+    #[error("network error: {0}")]
+    Network(String),
 }
 
-/// Convenience type alias.
-pub type SdkResult<T> = Result<T, SdkError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-impl SdkError {
-    /// Whether the error is retriable.
+impl Error {
+    /// Whether retrying the same call later may succeed.
     pub fn is_retriable(&self) -> bool {
-        matches!(self, SdkError::Unavailable(_) | SdkError::RateLimit { .. })
+        matches!(
+            self,
+            Error::Unavailable(_)
+                | Error::RateLimit { .. }
+                | Error::Timeout { .. }
+                | Error::Network(_)
+        )
     }
 
-    /// Maps an HTTP status code and body text to an SdkError.
-    pub fn from_http(status: u16, body: &str) -> Self {
+    /// Maps an error response to an [`Error`], using the server's own message
+    /// when it sent one. `retry_after_ms` comes from a `Retry-After` header.
+    pub fn from_http(status: u16, body: &str, retry_after_ms: Option<u64>) -> Self {
+        let parsed: Option<serde_json::Value> = serde_json::from_str(body).ok();
+        let mut message = parsed
+            .as_ref()
+            .and_then(|v| v.get("error").or_else(|| v.get("message")))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| body.to_string());
+        if let Some(v) = &parsed {
+            if let Some(detail) = v.get("detail").and_then(|d| d.as_str()) {
+                message = format!("{message}: {detail}");
+            } else if let Some(req) = v.get("required").and_then(|d| d.as_str()) {
+                message = format!("{message}: requires {req}");
+            }
+        }
         match status {
-            401 | 403 => SdkError::Auth(body.to_string()),
-            404 => SdkError::NotFound {
-                entity_type: "entity".into(),
-                entity_id: "unknown".into(),
+            401 => Error::Auth(message),
+            402 | 403 => Error::AccessDenied(message),
+            404 => Error::NotFound(message),
+            400 | 409 | 422 => Error::Validation {
+                field: "request".into(),
+                constraint: message,
             },
-            429 => SdkError::RateLimit { retry_after_ms: 1000 },
-            503 => SdkError::Unavailable(body.to_string()),
-            408 | 504 => SdkError::Timeout { timeout_ms: 30000 },
-            400 | 422 => SdkError::Validation {
-                field: "input".into(),
-                constraint: body.to_string(),
+            429 => Error::RateLimit {
+                retry_after_ms: retry_after_ms.unwrap_or(1000),
             },
-            _ => SdkError::Http {
+            502 | 503 => Error::Unavailable(message),
+            408 | 504 => Error::Timeout { timeout_ms: 0 },
+            _ => Error::Http {
                 status,
-                body: body.to_string(),
+                body: message,
             },
         }
     }

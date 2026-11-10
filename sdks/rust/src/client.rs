@@ -1,639 +1,632 @@
-use std::fs;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::Duration;
 
-use dirs::home_dir;
-use reqwest::{Client as HttpClient, header};
+use reqwest::Method;
+use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
-use tracing::info;
 
-use crate::builder::ClawDBBuilder;
-use crate::error::{SdkError, SdkResult};
+use crate::builder::AxonioBuilder;
+use crate::error::{Error, Result};
 use crate::models::{
-    BranchInfo, DiffResult, HealthResponse, MemoryRecord, MergeResult, ReflectJob,
-    RememberOptions, SearchHit, SearchOptions, SessionInfo, SyncActionResult,
-    SyncResult, SyncStatusResult, TxInfo,
+    BranchInfo, DiffResult, HealthResponse, MemoryRecord, MergeResult, ReflectJob, RememberOptions,
+    SearchHit, SearchOptions, SessionInfo, SyncActionResult, SyncResult, SyncStatusResult, TxInfo,
 };
+use crate::transport::{base_url, stable_agent_id, Core};
 
-// ─── Internal shared state ────────────────────────────────────────────────────
-
-struct ClawDBInner {
-    endpoint: String,
-    api_key: String,
-    agent_id: String,
-    timeout_ms: u64,
-    http: HttpClient,
-}
-
-const LOCAL_ENDPOINT: &str = "http://localhost:50050";
-const LOCAL_SOCKET: &str = "127.0.0.1:50050";
-const DEFAULT_LOCAL_JWT_SECRET: &str = "clawdb-sdk-local-dev-secret";
-
-async fn local_server_healthy() -> bool {
-    tokio::net::TcpStream::connect(LOCAL_SOCKET).await.is_ok()
-}
-
-async fn wait_for_local_server(timeout: Duration) -> bool {
-    let started = tokio::time::Instant::now();
-    while started.elapsed() < timeout {
-        if local_server_healthy().await {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    false
-}
-
-fn installed_binary_path() -> Option<PathBuf> {
-    let binary = if cfg!(windows) {
-        "clawdb-server.exe"
-    } else {
-        "clawdb-server"
-    };
-
-    home_dir().map(|home| home.join(".clawdb").join("bin").join(binary))
-}
-
-fn persist_server_pid(pid: u32) {
-    if let Some(home) = home_dir() {
-        let claw_dir = home.join(".clawdb");
-        let _ = fs::create_dir_all(&claw_dir);
-        let _ = fs::write(claw_dir.join("server.pid"), pid.to_string());
-    }
-}
-
-fn spawn_local_server(binary: impl AsRef<std::ffi::OsStr>) -> bool {
-    let mut command = Command::new(binary);
-    command
-        .arg("--grpc-port")
-        .arg("50050")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    if std::env::var_os("CLAW_GUARD_JWT_SECRET").is_none() {
-        command.env("CLAW_GUARD_JWT_SECRET", DEFAULT_LOCAL_JWT_SECRET);
-    }
-    if std::env::var_os("CLAW_VECTOR_ENABLED").is_none() {
-        command.env("CLAW_VECTOR_ENABLED", "false");
-    }
-
-    match command.spawn() {
-        Ok(child) => {
-            persist_server_pid(child.id());
-            true
-        }
-        Err(_) => false,
-    }
-}
-
-async fn ensure_local_server_available() -> SdkResult<String> {
-    if local_server_healthy().await {
-        return Ok(LOCAL_ENDPOINT.into());
-    }
-
-    if spawn_local_server("clawdb-server") && wait_for_local_server(Duration::from_secs(5)).await {
-        return Ok(LOCAL_ENDPOINT.into());
-    }
-
-    if let Some(installed_binary) = installed_binary_path() {
-        if installed_binary.exists()
-            && spawn_local_server(&installed_binary)
-            && wait_for_local_server(Duration::from_secs(5)).await
-        {
-            return Ok(LOCAL_ENDPOINT.into());
-        }
-    }
-
-    Err(SdkError::Config(
-        "could not auto-provision clawdb-server; install clawdb-server or set CLAWDB_URL/CLAWDB_API_KEY".into(),
-    ))
-}
-
-// ─── ClawDB client ─────────────────────────────────────────────────────────
-
-/// The primary ClawDB client.
+/// The Axonio client. Cheap to clone; clones share one session.
+///
+/// A session is opened on the first call and renewed automatically.
 #[derive(Clone)]
-pub struct ClawDB {
-    inner: Arc<ClawDBInner>,
+pub struct Axonio {
+    core: Arc<Core>,
+    endpoint: String,
 }
 
-impl ClawDB {
-    /// Create a builder to configure and construct a ClawDB client.
-    pub fn builder() -> ClawDBBuilder {
-        ClawDBBuilder::new()
+fn str_of(v: &Value, key: &str) -> String {
+    v[key].as_str().unwrap_or_default().to_string()
+}
+
+fn items<T: DeserializeOwned>(v: &Value, key: &str) -> Vec<T> {
+    let arr = if v.is_array() { v } else { &v[key] };
+    serde_json::from_value(arr.clone()).unwrap_or_default()
+}
+
+fn one<T: DeserializeOwned + Default>(v: &Value) -> T {
+    serde_json::from_value(v.clone()).unwrap_or_default()
+}
+
+fn branch_of(v: &Value) -> BranchInfo {
+    let b = if v["branch"].is_object() {
+        &v["branch"]
+    } else {
+        v
+    };
+    BranchInfo {
+        branch_id: b["id"]
+            .as_str()
+            .or_else(|| b["branch_id"].as_str())
+            .unwrap_or_default()
+            .to_string(),
+        name: str_of(b, "name"),
+        branch_json: Some(b.to_string()),
+    }
+}
+
+fn count_of(v: &Value, key: &str) -> u32 {
+    match &v[key] {
+        Value::Array(a) => a.len() as u32,
+        other => other.as_u64().unwrap_or(0) as u32,
+    }
+}
+
+fn seg(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20")
+}
+
+fn require_content(content: &str) -> Result<()> {
+    if content.trim().is_empty() {
+        return Err(Error::Validation {
+            field: "content".into(),
+            constraint: "must be a non-empty string".into(),
+        });
+    }
+    Ok(())
+}
+
+fn is_uuid_like(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| {
+            if [8, 13, 18, 23].contains(&i) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+
+impl Axonio {
+    /// Starts a builder.
+    pub fn builder() -> AxonioBuilder {
+        AxonioBuilder::new()
     }
 
-    /// Create a client from environment variables.
-    pub async fn from_env() -> SdkResult<Self> {
-        ClawDBBuilder::from_env().build().await
+    /// A client configured from `AXONIO_*` environment variables. With only
+    /// `AXONIO_API_KEY` set it talks to the Axonio cloud.
+    pub fn from_env() -> Result<Self> {
+        AxonioBuilder::from_env().build()
     }
 
-    /// Automatically provision a usable endpoint following the SDK fallback order.
-    pub async fn auto_provision() -> SdkResult<Self> {
-        if let Ok(endpoint) = std::env::var("CLAWDB_URL") {
-            return ClawDBBuilder::from_env().endpoint(endpoint).build().await;
+    /// A client for an API key. `endpoint` of `None` means the Axonio cloud.
+    pub fn from_api_key(api_key: impl Into<String>, endpoint: Option<&str>) -> Result<Self> {
+        let mut builder = AxonioBuilder::new().api_key(api_key);
+        if let Some(e) = endpoint {
+            builder = builder.endpoint(e);
         }
-        if let Ok(api_key) = std::env::var("CLAWDB_API_KEY") {
-            return ClawDBBuilder::from_env()
-                .api_key(api_key)
-                .endpoint("https://cloud.clawdb.dev")
-                .build()
-                .await;
-        }
-        let endpoint = ensure_local_server_available().await?;
-
-        ClawDBBuilder::from_env()
-            .endpoint(endpoint)
-            .build()
-            .await
+        builder.build()
     }
 
-    /// Create a client from an API key and endpoint.
-    pub async fn from_api_key(api_key: impl Into<String>, endpoint: impl Into<String>) -> SdkResult<Self> {
-        ClawDBBuilder::new().api_key(api_key).endpoint(endpoint).build().await
-    }
-
-    pub(crate) async fn new_internal(
+    pub(crate) fn new_internal(
         endpoint: String,
         api_key: String,
         agent_id: String,
-        _workspace: String,
-        _role: String,
+        role: String,
         timeout_ms: u64,
-    ) -> SdkResult<Self> {
-        let mut default_headers = header::HeaderMap::new();
-        if !api_key.is_empty() {
-            let val = header::HeaderValue::from_str(&format!("Bearer {}", api_key))
-                .map_err(|_| SdkError::Config("Invalid API key characters".into()))?;
-            default_headers.insert(header::AUTHORIZATION, val);
-        }
-        let http = HttpClient::builder()
-            .default_headers(default_headers)
-            .timeout(Duration::from_millis(timeout_ms))
-            .build()
-            .map_err(|e| SdkError::Config(e.to_string()))?;
-
+    ) -> Result<Self> {
+        let base = base_url(&endpoint)?;
+        let core = Core::new(
+            base.clone(),
+            api_key,
+            stable_agent_id(&agent_id),
+            role,
+            timeout_ms,
+        )?;
         Ok(Self {
-            inner: Arc::new(ClawDBInner { endpoint, api_key, agent_id, timeout_ms, http }),
+            core: Arc::new(core),
+            endpoint: base,
         })
     }
 
-    // ─── HTTP helpers ────────────────────────────────────────────────────
-
-    async fn get(&self, path: &str) -> SdkResult<Value> {
-        let url = format!("{}{}", self.inner.endpoint, path);
-        let resp = self.inner.http.get(&url).send().await.map_err(SdkError::Reqwest)?;
-        self.parse_response(resp).await
+    /// The HTTP API base URL in use.
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
     }
 
-    async fn post(&self, path: &str, body: Value) -> SdkResult<Value> {
-        let url = format!("{}{}", self.inner.endpoint, path);
-        let resp = self.inner.http.post(&url).json(&body).send().await.map_err(SdkError::Reqwest)?;
-        self.parse_response(resp).await
+    /// The agent id as sent to the server (a UUID).
+    pub fn agent_id(&self) -> &str {
+        &self.core.agent_id
     }
 
-    async fn patch(&self, path: &str, body: Value) -> SdkResult<Value> {
-        let url = format!("{}{}", self.inner.endpoint, path);
-        let resp = self.inner.http.patch(&url).json(&body).send().await.map_err(SdkError::Reqwest)?;
-        self.parse_response(resp).await
+    /// Opens the session now instead of on the first call, so a bad key fails here.
+    pub async fn connect(&self) -> Result<()> {
+        self.core
+            .call(Method::GET, "/v1/sessions/me", &[], None)
+            .await
+            .map(|_| ())
     }
 
-    async fn delete(&self, path: &str) -> SdkResult<Value> {
-        let url = format!("{}{}", self.inner.endpoint, path);
-        let resp = self.inner.http.delete(&url).send().await.map_err(SdkError::Reqwest)?;
-        self.parse_response(resp).await
-    }
-
-    async fn parse_response(&self, resp: reqwest::Response) -> SdkResult<Value> {
-        let status = resp.status().as_u16();
-        let text = resp.text().await.map_err(SdkError::Reqwest)?;
-        if status >= 400 {
-            return Err(SdkError::from_http(status, &text));
+    /// Revokes the open session, if any. Safe to call more than once.
+    pub async fn close(&self) {
+        if let Some(id) = self.core.session_id().await {
+            let _ = self
+                .core
+                .call(
+                    Method::DELETE,
+                    &format!("/v1/sessions/{}", seg(&id)),
+                    &[],
+                    None,
+                )
+                .await;
         }
-        if text.is_empty() {
-            return Ok(Value::Null);
-        }
-        serde_json::from_str(&text).map_err(SdkError::Serialization)
+        self.core.forget_session().await;
     }
 
-    fn str_field(v: &Value, field: &str) -> String {
-        v[field].as_str().unwrap_or_default().to_string()
+    async fn get(&self, path: &str, query: &[(&str, String)]) -> Result<Value> {
+        self.core.call(Method::GET, path, query, None).await
     }
 
-    fn extract_array<T: serde::de::DeserializeOwned>(v: &Value, field: &str) -> Vec<T> {
-        let arr = if v[field].is_array() { &v[field] } else { v };
-        serde_json::from_value(arr.clone()).unwrap_or_default()
+    async fn post(&self, path: &str, body: Option<Value>) -> Result<Value> {
+        self.core.call(Method::POST, path, &[], body).await
     }
 
     // ─── Health ──────────────────────────────────────────────────────────
 
-    /// Check server health.
-    pub async fn health(&self) -> SdkResult<HealthResponse> {
-        let v = self.get("/v1/health").await?;
+    /// Server health. Needs no session.
+    pub async fn health(&self) -> Result<HealthResponse> {
+        let v = self.core.call_public(Method::GET, "/v1/health").await?;
         Ok(HealthResponse {
-            status: Self::str_field(&v, "status"),
+            status: str_of(&v, "status"),
             version: v["version"].as_str().map(str::to_string),
+            components: v.get("components").cloned(),
         })
     }
 
-    /// Ping the server (returns Ok if reachable).
-    pub async fn ping(&self) -> SdkResult<()> {
+    /// Ok if the server answers.
+    pub async fn ping(&self) -> Result<()> {
         self.health().await.map(|_| ())
     }
 
     // ─── Sessions ────────────────────────────────────────────────────────
 
-    /// Create a new session token.
-    pub async fn create_session(&self, role: &str, scopes: &[&str], ttl_secs: u64) -> SdkResult<SessionInfo> {
-        let v = self.post("/v1/sessions", json!({
-            "role": role,
-            "scopes": scopes,
-            "ttl_secs": ttl_secs,
-        })).await?;
-        Ok(SessionInfo {
-            session_id: Self::str_field(&v, "session_id"),
-            role: Self::str_field(&v, "role"),
-            scopes: v["scopes"].as_array()
-                .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
-                .unwrap_or_default(),
-            expires_at: None,
-        })
+    /// Opens a new session and makes it the active one.
+    pub async fn create_session(
+        &self,
+        role: &str,
+        scopes: &[&str],
+        ttl_secs: u64,
+    ) -> Result<SessionInfo> {
+        let v = self.core.open_session(role, scopes, ttl_secs).await?;
+        Ok(session_of(&v))
     }
 
-    /// Validate the current session.
-    pub async fn validate_session(&self) -> SdkResult<SessionInfo> {
-        let v = self.get("/v1/sessions/me").await?;
-        Ok(SessionInfo {
-            session_id: Self::str_field(&v, "session_id"),
-            role: Self::str_field(&v, "role"),
-            scopes: v["scopes"].as_array()
-                .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
-                .unwrap_or_default(),
-            expires_at: None,
-        })
+    /// The current session.
+    pub async fn validate_session(&self) -> Result<SessionInfo> {
+        Ok(session_of(&self.get("/v1/sessions/me", &[]).await?))
     }
 
-    /// Revoke a session by ID.
-    pub async fn revoke_session(&self, session_id: &str) -> SdkResult<bool> {
-        let v = self.delete(&format!("/v1/sessions/{}", session_id)).await?;
-        Ok(v["revoked"].as_bool().unwrap_or(true))
+    pub async fn revoke_session(&self, session_id: &str) -> Result<bool> {
+        self.core
+            .call(
+                Method::DELETE,
+                &format!("/v1/sessions/{}", seg(session_id)),
+                &[],
+                None,
+            )
+            .await?;
+        Ok(true)
     }
 
-    /// Get the count of active sessions.
-    pub async fn active_session_count(&self) -> SdkResult<u64> {
-        let v = self.get("/v1/sessions/active/count").await?;
-        Ok(v["count"].as_u64().unwrap_or(0))
+    pub async fn active_session_count(&self) -> Result<u64> {
+        Ok(self.get("/v1/sessions/active/count", &[]).await?["count"]
+            .as_u64()
+            .unwrap_or(0))
     }
 
     // ─── Memory ──────────────────────────────────────────────────────────
 
-    /// Store a plain memory and return its ID.
-    pub async fn remember(&self, content: impl Into<String>) -> SdkResult<String> {
+    /// Stores a memory and returns its id.
+    pub async fn remember(&self, content: impl Into<String>) -> Result<String> {
+        self.remember_typed(content, RememberOptions::default())
+            .await
+    }
+
+    /// Stores a memory with a type, tags and metadata.
+    pub async fn remember_typed(
+        &self,
+        content: impl Into<String>,
+        opts: RememberOptions,
+    ) -> Result<String> {
         let content = content.into();
-        if content.trim().is_empty() {
-            return Err(SdkError::Validation { field: "content".into(), constraint: "must be non-empty".into() });
-        }
-        let v = self.post("/v1/memories", json!({ "content": content })).await?;
-        Ok(Self::str_field(&v, "id"))
+        require_content(&content)?;
+        let v = self
+            .post(
+                "/v1/memories",
+                Some(json!({
+                    "content": content,
+                    "type": opts.memory_type.unwrap_or_else(|| "context".into()),
+                    "tags": opts.tags.unwrap_or_default(),
+                    "metadata": opts.metadata.unwrap_or_else(|| json!({})),
+                })),
+            )
+            .await?;
+        Ok(str_of(&v, "memory_id"))
     }
 
-    /// Store a typed memory and return its ID.
-    pub async fn remember_typed(&self, content: impl Into<String>, opts: RememberOptions) -> SdkResult<String> {
+    /// Replaces a memory's content.
+    pub async fn update_memory(&self, memory_id: &str, content: impl Into<String>) -> Result<bool> {
         let content = content.into();
-        let mut body = json!({ "content": content });
-        if let Some(mt) = &opts.memory_type {
-            body["type"] = json!(mt);
-        }
-        if let Some(tags) = &opts.tags {
-            body["tags"] = json!(tags);
-        }
-        if let Some(ttl) = opts.ttl_days {
-            body["ttl_days"] = json!(ttl);
-        }
-        let v = self.post("/v1/memories", body).await?;
-        Ok(Self::str_field(&v, "id"))
+        require_content(&content)?;
+        let v = self
+            .core
+            .call(
+                Method::PATCH,
+                &format!("/v1/memories/{}", seg(memory_id)),
+                &[],
+                Some(json!({ "content": content })),
+            )
+            .await?;
+        Ok(v["updated"].as_bool().unwrap_or(false))
     }
 
-    /// Update an existing memory's content.
-    pub async fn update_memory(&self, memory_id: &str, content: impl Into<String>) -> SdkResult<bool> {
-        let v = self.patch(&format!("/v1/memories/{}", memory_id), json!({ "content": content.into() })).await?;
-        Ok(v["updated"].as_bool().unwrap_or(true))
-    }
-
-    /// Semantic search over memories.
-    pub async fn search(&self, query: impl Into<String>, opts: SearchOptions) -> SdkResult<Vec<SearchHit>> {
+    /// Searches by meaning and keywords. Punctuation and hyphens in `query` are safe.
+    pub async fn search(
+        &self,
+        query: impl Into<String>,
+        opts: SearchOptions,
+    ) -> Result<Vec<SearchHit>> {
         let top_k = opts.top_k.unwrap_or(5);
-        let v = self.post("/v1/memories/search", json!({
-            "query": query.into(),
-            "top_k": top_k,
-            "semantic": opts.semantic.unwrap_or(true),
-        })).await?;
-        let hits: Vec<SearchHit> = Self::extract_array(&v, "hits");
-        Ok(hits)
+        if top_k > 100 {
+            return Err(Error::Validation {
+                field: "top_k".into(),
+                constraint: "cannot exceed 100".into(),
+            });
+        }
+        let v = self
+            .get(
+                "/v1/memories/search",
+                &[
+                    ("q", query.into()),
+                    ("top_k", top_k.to_string()),
+                    ("semantic", opts.semantic.unwrap_or(true).to_string()),
+                ],
+            )
+            .await?;
+        Ok(items(&v, "hits"))
     }
 
-    /// Recall specific memories by ID.
-    pub async fn recall(&self, ids: &[&str]) -> SdkResult<Vec<MemoryRecord>> {
-        let v = self.post("/v1/memories/recall", json!({ "ids": ids })).await?;
-        let records: Vec<MemoryRecord> = Self::extract_array(&v, "memories");
-        Ok(records)
+    /// One memory by id.
+    pub async fn get_memory(&self, memory_id: &str) -> Result<MemoryRecord> {
+        Ok(one(&self
+            .get(&format!("/v1/memories/{}", seg(memory_id)), &[])
+            .await?))
     }
 
-    /// List memories with optional type filter.
-    pub async fn list_memories(&self, memory_type: Option<&str>, limit: Option<u32>) -> SdkResult<Vec<MemoryRecord>> {
-        let mut path = "/v1/memories?".to_string();
-        if let Some(mt) = memory_type { path.push_str(&format!("type={}&", mt)); }
-        if let Some(l) = limit { path.push_str(&format!("limit={}", l)); }
-        let v = self.get(&path).await?;
-        let records: Vec<MemoryRecord> = Self::extract_array(&v, "memories");
-        Ok(records)
+    /// Several memories by id.
+    pub async fn recall(&self, ids: &[&str]) -> Result<Vec<MemoryRecord>> {
+        if ids.is_empty() {
+            return Err(Error::Validation {
+                field: "ids".into(),
+                constraint: "must be non-empty".into(),
+            });
+        }
+        if let Some(bad) = ids.iter().find(|id| !is_uuid_like(id)) {
+            return Err(Error::Validation {
+                field: "ids".into(),
+                constraint: format!("invalid UUID: {bad}"),
+            });
+        }
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            out.push(self.get_memory(id).await?);
+        }
+        Ok(out)
     }
 
-    /// Delete a memory by ID.
-    pub async fn delete_memory(&self, memory_id: &str) -> SdkResult<bool> {
-        let v = self.delete(&format!("/v1/memories/{}", memory_id)).await?;
-        Ok(v["deleted"].as_bool().unwrap_or(true))
+    /// The newest memories first.
+    pub async fn list_memories(
+        &self,
+        memory_type: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<MemoryRecord>> {
+        let mut query = vec![("limit", limit.unwrap_or(50).to_string())];
+        if let Some(t) = memory_type {
+            query.push(("type", t.to_string()));
+        }
+        Ok(items(&self.get("/v1/memories", &query).await?, "memories"))
+    }
+
+    pub async fn delete_memory(&self, memory_id: &str) -> Result<bool> {
+        self.core
+            .call(
+                Method::DELETE,
+                &format!("/v1/memories/{}", seg(memory_id)),
+                &[],
+                None,
+            )
+            .await?;
+        Ok(true)
     }
 
     // ─── Branches ────────────────────────────────────────────────────────
 
-    /// Fork a new branch.
-    pub async fn branch(&self, name: &str, from: Option<&str>) -> SdkResult<BranchInfo> {
+    /// Creates a branch. `from` is a branch id; `None` means trunk.
+    pub async fn branch(&self, name: &str, from: Option<&str>) -> Result<BranchInfo> {
         let mut body = json!({ "name": name });
-        if let Some(f) = from { body["from_branch_id"] = json!(f); }
-        let v = self.post("/v1/branches", body).await?;
-        Ok(BranchInfo {
-            branch_id: Self::str_field(&v, "branch_id"),
-            name: Self::str_field(&v, "name"),
-            branch_json: v["branch_json"].as_str().map(str::to_string),
-        })
+        if let Some(f) = from.filter(|f| is_uuid_like(f)) {
+            body["from"] = json!(f);
+        }
+        let mut info = branch_of(&self.post("/v1/branches", Some(body)).await?);
+        if info.name.is_empty() {
+            info.name = name.to_string();
+        }
+        Ok(info)
     }
 
-    /// List all branches.
-    pub async fn list_branches(&self) -> SdkResult<Vec<BranchInfo>> {
-        let v = self.get("/v1/branches").await?;
-        let branches: Vec<BranchInfo> = Self::extract_array(&v, "branches");
-        Ok(branches)
+    pub async fn list_branches(&self) -> Result<Vec<BranchInfo>> {
+        let v = self.get("/v1/branches", &[]).await?;
+        let list = if v.is_array() {
+            v.as_array().cloned().unwrap_or_default()
+        } else {
+            v["branches"].as_array().cloned().unwrap_or_default()
+        };
+        Ok(list.iter().map(branch_of).collect())
     }
 
-    /// Get a branch by ID.
-    pub async fn get_branch(&self, branch_id: &str) -> SdkResult<BranchInfo> {
-        let v = self.get(&format!("/v1/branches/{}", branch_id)).await?;
-        Ok(BranchInfo {
-            branch_id: Self::str_field(&v, "branch_id"),
-            name: Self::str_field(&v, "name"),
-            branch_json: v["branch_json"].as_str().map(str::to_string),
-        })
+    pub async fn get_branch(&self, branch_id: &str) -> Result<BranchInfo> {
+        Ok(branch_of(
+            &self
+                .get(&format!("/v1/branches/{}", seg(branch_id)), &[])
+                .await?,
+        ))
     }
 
-    /// Get a branch by name.
-    pub async fn get_branch_by_name(&self, name: &str) -> SdkResult<BranchInfo> {
-        let v = self.get(&format!("/v1/branches/by-name/{}", name)).await?;
-        Ok(BranchInfo {
-            branch_id: Self::str_field(&v, "branch_id"),
-            name: Self::str_field(&v, "name"),
-            branch_json: v["branch_json"].as_str().map(str::to_string),
-        })
+    pub async fn get_branch_by_name(&self, name: &str) -> Result<BranchInfo> {
+        Ok(branch_of(
+            &self
+                .get(&format!("/v1/branches/by-name/{}", seg(name)), &[])
+                .await?,
+        ))
     }
 
-    /// Get the trunk (main) branch.
-    pub async fn get_trunk_branch(&self) -> SdkResult<BranchInfo> {
-        let v = self.get("/v1/branches/trunk").await?;
-        Ok(BranchInfo {
-            branch_id: Self::str_field(&v, "branch_id"),
-            name: Self::str_field(&v, "name"),
-            branch_json: v["branch_json"].as_str().map(str::to_string),
-        })
+    pub async fn get_trunk_branch(&self) -> Result<BranchInfo> {
+        Ok(branch_of(&self.get("/v1/branches/trunk", &[]).await?))
     }
 
-    /// Diff a branch against a target.
-    pub async fn diff(&self, source_branch_id: &str, target_branch_id: &str) -> SdkResult<DiffResult> {
-        let v = self.get(&format!("/v1/branches/{}/diff?target={}", source_branch_id, target_branch_id)).await?;
+    /// Compares a branch with `target` (an id, a name, or empty for trunk).
+    pub async fn diff(&self, branch_id: &str, target: &str) -> Result<DiffResult> {
+        let v = self
+            .get(
+                &format!("/v1/branches/{}/diff", seg(branch_id)),
+                &[("target", target.to_string())],
+            )
+            .await?;
+        let stats = if v["stats"].is_object() {
+            &v["stats"]
+        } else {
+            &v
+        };
         Ok(DiffResult {
-            added: v["added"].as_u64().unwrap_or(0) as u32,
-            removed: v["removed"].as_u64().unwrap_or(0) as u32,
-            modified: v["modified"].as_u64().unwrap_or(0) as u32,
-            unchanged: v["unchanged"].as_u64().unwrap_or(0) as u32,
+            added: count_of(stats, "added"),
+            removed: count_of(stats, "removed"),
+            modified: count_of(stats, "modified"),
+            unchanged: count_of(stats, "unchanged"),
             divergence_score: v["divergence_score"].as_f64().unwrap_or(0.0),
-            diff_json: v["diff_json"].as_str().map(str::to_string),
+            diff_json: Some(v.to_string()),
         })
     }
 
-    /// Merge source branch into target.
-    pub async fn merge(&self, source_branch_id: &str, target_branch_id: &str, strategy: &str) -> SdkResult<MergeResult> {
-        let v = self.post(&format!("/v1/branches/{}/merge", source_branch_id), json!({
-            "target_branch_id": target_branch_id,
-            "strategy": strategy,
-        })).await?;
+    /// Merges `source` (an id or name) into `target` (an id, a name, or empty for trunk).
+    pub async fn merge(&self, source: &str, target: &str, strategy: &str) -> Result<MergeResult> {
+        let mut body = json!({ "target": target });
+        if !strategy.is_empty() {
+            body["strategy"] = json!(strategy);
+        }
+        let v = self
+            .post(&format!("/v1/branches/{}/merge", seg(source)), Some(body))
+            .await?;
         Ok(MergeResult {
             success: v["success"].as_bool().unwrap_or(true),
-            applied: v["applied"].as_u64().unwrap_or(0) as u32,
-            skipped: v["skipped"].as_u64().unwrap_or(0) as u32,
-            conflicts: v["conflicts"].as_u64().unwrap_or(0) as u32,
+            applied: count_of(&v, "applied"),
+            skipped: count_of(&v, "skipped"),
+            conflicts: count_of(&v, "conflicts"),
             duration_ms: v["duration_ms"].as_u64().unwrap_or(0),
         })
     }
 
-    /// Discard (delete) a branch.
-    pub async fn discard_branch(&self, branch_id: &str) -> SdkResult<bool> {
-        let v = self.delete(&format!("/v1/branches/{}", branch_id)).await?;
-        Ok(v["discarded"].as_bool().unwrap_or(true))
+    pub async fn discard_branch(&self, branch_id: &str) -> Result<bool> {
+        self.core
+            .call(
+                Method::DELETE,
+                &format!("/v1/branches/{}", seg(branch_id)),
+                &[],
+                None,
+            )
+            .await?;
+        Ok(true)
     }
 
-    /// Archive a branch.
-    pub async fn archive_branch(&self, branch_id: &str) -> SdkResult<bool> {
-        let v = self.post(&format!("/v1/branches/{}/archive", branch_id), json!({})).await?;
-        Ok(v["archived"].as_bool().unwrap_or(true))
+    pub async fn archive_branch(&self, branch_id: &str) -> Result<bool> {
+        self.post(&format!("/v1/branches/{}/archive", seg(branch_id)), None)
+            .await?;
+        Ok(true)
     }
 
     // ─── Sync ────────────────────────────────────────────────────────────
 
-    /// Full bidirectional sync.
-    pub async fn sync(&self) -> SdkResult<SyncResult> {
-        let v = self.post("/v1/sync", json!({})).await?;
-        Ok(SyncResult {
-            pushed: v["pushed"].as_u64().unwrap_or(0) as u32,
-            pulled: v["pulled"].as_u64().unwrap_or(0) as u32,
-            conflicts: v["conflicts"].as_u64().unwrap_or(0) as u32,
-            duration_ms: v["duration_ms"].as_u64().unwrap_or(0),
+    pub async fn sync(&self) -> Result<SyncResult> {
+        Ok(one(&self.post("/v1/sync", None).await?))
+    }
+
+    async fn sync_action(&self, path: &str) -> Result<SyncActionResult> {
+        Ok(SyncActionResult {
+            summary_json: Some(self.post(path, None).await?.to_string()),
         })
     }
 
-    /// Push local memories to remote.
-    pub async fn push_sync(&self) -> SdkResult<SyncActionResult> {
-        let v = self.post("/v1/sync/push", json!({})).await?;
-        Ok(SyncActionResult { summary_json: Some(v.to_string()) })
+    pub async fn push_sync(&self) -> Result<SyncActionResult> {
+        self.sync_action("/v1/sync/push").await
     }
 
-    /// Pull remote memories to local.
-    pub async fn pull_sync(&self) -> SdkResult<SyncActionResult> {
-        let v = self.post("/v1/sync/pull", json!({})).await?;
-        Ok(SyncActionResult { summary_json: Some(v.to_string()) })
+    pub async fn pull_sync(&self) -> Result<SyncActionResult> {
+        self.sync_action("/v1/sync/pull").await
     }
 
-    /// Reconcile divergent sync state.
-    pub async fn reconcile_sync(&self) -> SdkResult<SyncActionResult> {
-        let v = self.post("/v1/sync/reconcile", json!({})).await?;
-        Ok(SyncActionResult { summary_json: Some(v.to_string()) })
+    pub async fn reconcile_sync(&self) -> Result<SyncActionResult> {
+        self.sync_action("/v1/sync/reconcile").await
     }
 
-    /// Get current sync status.
-    pub async fn sync_status(&self) -> SdkResult<SyncStatusResult> {
-        let v = self.get("/v1/sync/status").await?;
-        Ok(SyncStatusResult { status_json: Some(v.to_string()) })
+    pub async fn sync_status(&self) -> Result<SyncStatusResult> {
+        Ok(SyncStatusResult {
+            status_json: Some(self.get("/v1/sync/status", &[]).await?.to_string()),
+        })
     }
 
     // ─── Reflect ─────────────────────────────────────────────────────────
 
-    /// Trigger a new reflection job.
-    pub async fn reflect(&self) -> SdkResult<ReflectJob> {
-        let v = self.post("/v1/reflect", json!({ "agent_id": self.inner.agent_id })).await?;
-        Ok(ReflectJob {
-            job_id: Self::str_field(&v, "job_id"),
-            status: Self::str_field(&v, "status"),
-            message: v["message"].as_str().map(str::to_string),
-            skipped: v["skipped"].as_bool().unwrap_or(false),
-        })
+    /// Starts a reflection job over recent memories.
+    pub async fn reflect(&self) -> Result<ReflectJob> {
+        Ok(one(&self.post("/v1/reflect", None).await?))
     }
 
-    /// List reflection jobs.
-    pub async fn reflect_list_jobs(&self, agent_id: &str) -> SdkResult<Vec<ReflectJob>> {
-        let v = self.get(&format!("/v1/reflect/jobs?agent_id={}", agent_id)).await?;
-        let jobs: Vec<ReflectJob> = Self::extract_array(&v, "jobs");
-        Ok(jobs)
+    pub async fn reflect_list_jobs(&self, agent_id: &str) -> Result<Vec<ReflectJob>> {
+        let mut query = Vec::new();
+        if !agent_id.is_empty() {
+            query.push(("agent_id", agent_id.to_string()));
+        }
+        Ok(items(&self.get("/v1/reflect/jobs", &query).await?, "jobs"))
     }
 
-    /// Get a specific reflection job.
-    pub async fn reflect_get_job(&self, job_id: &str) -> SdkResult<ReflectJob> {
-        let v = self.get(&format!("/v1/reflect/jobs/{}", job_id)).await?;
-        Ok(ReflectJob {
-            job_id: Self::str_field(&v, "job_id"),
-            status: Self::str_field(&v, "status"),
-            message: v["message"].as_str().map(str::to_string),
-            skipped: v["skipped"].as_bool().unwrap_or(false),
-        })
+    pub async fn reflect_get_job(&self, job_id: &str) -> Result<ReflectJob> {
+        Ok(one(&self
+            .get(&format!("/v1/reflect/jobs/{}", seg(job_id)), &[])
+            .await?))
     }
 
-    /// Get extracted facts for an agent.
-    pub async fn reflect_get_facts(&self, agent_id: &str) -> SdkResult<Value> {
-        self.get(&format!("/v1/reflect/facts/{}", agent_id)).await
+    pub async fn reflect_get_facts(&self, agent_id: &str) -> Result<Value> {
+        self.get(&format!("/v1/reflect/facts/{}", seg(agent_id)), &[])
+            .await
     }
 
-    /// Get preferences for an agent.
-    pub async fn reflect_get_preferences(&self, agent_id: &str) -> SdkResult<Value> {
-        self.get(&format!("/v1/reflect/preferences/{}", agent_id)).await
+    pub async fn reflect_get_preferences(&self, agent_id: &str) -> Result<Value> {
+        self.get(&format!("/v1/reflect/preferences/{}", seg(agent_id)), &[])
+            .await
     }
 
-    /// Get contradictions for an agent.
-    pub async fn reflect_get_contradictions(&self, agent_id: &str) -> SdkResult<Value> {
-        self.get(&format!("/v1/reflect/contradictions/{}", agent_id)).await
+    pub async fn reflect_get_contradictions(&self, agent_id: &str) -> Result<Value> {
+        self.get(
+            &format!("/v1/reflect/contradictions/{}", seg(agent_id)),
+            &[],
+        )
+        .await
     }
 
-    /// Resolve a specific contradiction.
+    /// Resolves a contradiction. `merged_value` is the merged value, if the strategy needs one.
     pub async fn reflect_resolve_contradiction(
         &self,
         agent_id: &str,
         contradiction_id: &str,
         strategy: &str,
-        merged_value_json: Option<&str>,
-    ) -> SdkResult<Value> {
+        merged_value: Option<Value>,
+    ) -> Result<Value> {
         self.post(
-            &format!("/v1/reflect/contradictions/{}/{}/resolve", agent_id, contradiction_id),
-            json!({ "strategy": strategy, "merged_value_json": merged_value_json }),
-        ).await
+            &format!(
+                "/v1/reflect/contradictions/{}/{}/resolve",
+                seg(agent_id),
+                seg(contradiction_id)
+            ),
+            Some(json!({ "strategy": strategy, "merged_value": merged_value })),
+        )
+        .await
     }
 
-    // ─── Transactions ─────────────────────────────────────────────────────
+    // ─── Transactions ────────────────────────────────────────────────────
 
-    /// Begin a new transaction.
-    pub async fn begin_tx(&self) -> SdkResult<TxInfo> {
-        let v = self.post("/v1/tx", json!({})).await?;
-        Ok(TxInfo { tx_id: Self::str_field(&v, "tx_id") })
+    pub async fn begin_tx(&self) -> Result<TxInfo> {
+        Ok(TxInfo {
+            tx_id: str_of(&self.post("/v1/tx", None).await?, "tx_id"),
+        })
     }
 
-    /// Add a plain memory to a transaction.
-    pub async fn tx_remember(&self, tx_id: &str, content: impl Into<String>) -> SdkResult<String> {
-        let v = self.post(&format!("/v1/tx/{}/memories", tx_id), json!({ "content": content.into() })).await?;
-        Ok(Self::str_field(&v, "id"))
+    /// Adds a memory to a transaction; returns the memory id.
+    pub async fn tx_remember(&self, tx_id: &str, content: impl Into<String>) -> Result<String> {
+        let content = content.into();
+        require_content(&content)?;
+        let v = self
+            .post(
+                &format!("/v1/tx/{}/memories", seg(tx_id)),
+                Some(json!({ "content": content })),
+            )
+            .await?;
+        Ok(str_of(&v, "memory_id"))
     }
 
-    /// Add a typed memory to a transaction.
-    pub async fn tx_remember_typed(&self, tx_id: &str, content: impl Into<String>, opts: RememberOptions) -> SdkResult<String> {
-        let mut body = json!({ "content": content.into() });
-        if let Some(mt) = &opts.memory_type { body["type"] = json!(mt); }
-        if let Some(tags) = &opts.tags { body["tags"] = json!(tags); }
-        let v = self.post(&format!("/v1/tx/{}/memories/typed", tx_id), body).await?;
-        Ok(Self::str_field(&v, "id"))
+    pub async fn tx_remember_typed(
+        &self,
+        tx_id: &str,
+        content: impl Into<String>,
+        opts: RememberOptions,
+    ) -> Result<String> {
+        let content = content.into();
+        require_content(&content)?;
+        let v = self
+            .post(
+                &format!("/v1/tx/{}/memories/typed", seg(tx_id)),
+                Some(json!({
+                    "content": content,
+                    "type": opts.memory_type.unwrap_or_else(|| "context".into()),
+                    "tags": opts.tags.unwrap_or_default(),
+                    "metadata": opts.metadata.unwrap_or_else(|| json!({})),
+                })),
+            )
+            .await?;
+        Ok(str_of(&v, "memory_id"))
     }
 
-    /// Commit a transaction.
-    pub async fn commit_tx(&self, tx_id: &str) -> SdkResult<bool> {
-        let v = self.post(&format!("/v1/tx/{}/commit", tx_id), json!({})).await?;
-        Ok(v["committed"].as_bool().unwrap_or(true))
+    pub async fn commit_tx(&self, tx_id: &str) -> Result<bool> {
+        Ok(self
+            .post(&format!("/v1/tx/{}/commit", seg(tx_id)), None)
+            .await?["committed"]
+            .as_bool()
+            .unwrap_or(false))
     }
 
-    /// Roll back a transaction.
-    pub async fn rollback_tx(&self, tx_id: &str) -> SdkResult<bool> {
-        let v = self.post(&format!("/v1/tx/{}/rollback", tx_id), json!({})).await?;
-        Ok(v["rolled_back"].as_bool().unwrap_or(true))
-    }
-
-    /// Close the client (no-op for HTTP).
-    pub fn close(&self) {
-        info!("clawdb.close");
-    }
-
-    /// Return the configured endpoint.
-    pub fn endpoint(&self) -> &str {
-        &self.inner.endpoint
-    }
-
-    /// Return the configured agent_id.
-    pub fn agent_id(&self) -> &str {
-        &self.inner.agent_id
-    }
-}
-
-// ─── ClawDBClient alias (legacy compat) ───────────────────────────────────
-
-/// Alias for [`ClawDB`] for backwards compatibility.
-#[derive(Clone)]
-pub struct ClawDBClient {
-    pub(crate) inner: ClawDB,
-}
-
-impl ClawDBClient {
-    pub async fn auto_provision() -> SdkResult<Self> {
-        Ok(Self { inner: ClawDB::auto_provision().await? })
-    }
-
-    pub fn builder() -> crate::builder::ClawDBBuilder {
-        ClawDB::builder()
+    pub async fn rollback_tx(&self, tx_id: &str) -> Result<bool> {
+        Ok(self
+            .post(&format!("/v1/tx/{}/rollback", seg(tx_id)), None)
+            .await?["rolled_back"]
+            .as_bool()
+            .unwrap_or(false))
     }
 }
 
-impl std::ops::Deref for ClawDBClient {
-    type Target = ClawDB;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+fn session_of(v: &Value) -> SessionInfo {
+    SessionInfo {
+        session_id: v["session_id"]
+            .as_str()
+            .or_else(|| v["id"].as_str())
+            .unwrap_or_default()
+            .to_string(),
+        role: str_of(v, "role"),
+        scopes: v["scopes"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|s| s.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        expires_at: v["expires_at"]
+            .as_str()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| t.with_timezone(&chrono::Utc)),
     }
 }
 
-impl std::fmt::Debug for ClawDB {
+impl std::fmt::Debug for Axonio {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClawDB")
-            .field("endpoint", &self.inner.endpoint)
-            .field("agent_id", &self.inner.agent_id)
-            .finish()
-    }
-}
-
-impl std::fmt::Debug for ClawDBClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClawDBClient")
-            .field("inner", &self.inner)
+        f.debug_struct("Axonio")
+            .field("endpoint", &self.endpoint)
+            .field("agent_id", &self.core.agent_id)
             .finish()
     }
 }
