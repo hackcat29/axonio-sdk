@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clawdb-ros2"
+version = "0.5.0"
+description = "Renamed to axonio-ros2. This package installs axonio-ros2 and keeps `import clawdb_ros2` working."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["axonio", "ros2", "robotics"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
+dependencies = ["axonio-ros2>=0.5.0"]
+
+[project.urls]
+Homepage = "https://axonio.xyz"
+Repository = "https://github.com/hackcat29/axonio-sdk"
+
+[tool.hatch.build.targets.wheel]
+packages = ["clawdb_ros2"]
