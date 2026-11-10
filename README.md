@@ -2,11 +2,12 @@
 
 SDKs, CLI, ROS2 package and framework adapters for **[Axonio](https://axonio.xyz)**: persistent memory for AI agents. Formerly ClawDB.
 
-The TypeScript, Python and Go packages are clients for the Axonio HTTP API. An API key alone connects them to the Axonio cloud; point them at a self-hosted `clawdb-server` with `AXONIO_URL`. The Rust runtime is the engine underneath that server.
+The TypeScript, Python, Go and Rust packages are clients for the Axonio HTTP API. An API key alone connects them to the Axonio cloud; point them at a self-hosted `clawdb-server` with `AXONIO_URL`. The engine underneath that server lives in the repositories listed under [The engine](#the-engine).
 
 [![CI](https://github.com/hackcat29/axonio-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/hackcat29/axonio-sdk/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/axonio)](https://www.npmjs.com/package/axonio)
 [![PyPI](https://img.shields.io/pypi/v/axonio)](https://pypi.org/project/axonio/)
+[![crates.io](https://img.shields.io/crates/v/axonio)](https://crates.io/crates/axonio)
 [![Go](https://img.shields.io/badge/go-hackcat29%2Faxonio--sdk%2Fsdks%2Fgo-00ADD8)](https://pkg.go.dev/github.com/hackcat29/axonio-sdk/sdks/go)
 
 ---
@@ -15,90 +16,98 @@ The TypeScript, Python and Go packages are clients for the Axonio HTTP API. An A
 
 | Package | Language | Description |
 |---|---|---|
-| [`axonio`](sdks/typescript/) | TypeScript | Core gRPC client |
-| [`axonio-cli`](packages/cli/) | TypeScript | `clawdb` CLI |
+| [`axonio`](sdks/typescript/) | TypeScript | Client: HTTPS to the Axonio cloud, gRPC to a self-hosted server |
+| [`axonio-cli`](packages/cli/) | TypeScript | The `clawdb` command-line tool |
 | [`axonio-langchain`](adapters/langchain/) | TypeScript | LangChain.js adapter |
 | [`axonio-openai-agents`](adapters/openai/) | TypeScript | OpenAI Agents SDK adapter |
 | [`axonio-vercel-ai`](adapters/vercel-ai/) | TypeScript | Vercel AI SDK adapter |
+| [`axonio-anthropic`](adapters/anthropic/) | TypeScript | Anthropic SDK adapter |
+| [`axonio-google-genai`](adapters/google-genai/) | TypeScript | Google GenAI adapter |
+| [`axonio-openclaw`](adapters/openclaw/) | TypeScript | OpenClaw adapter |
 | [`axonio-mcp`](sdks/mcp-adapter/) | TypeScript | MCP server (stdio transport) |
-| [`axonio`](sdks/python/) | Python | Sync + async Python client |
+| [`axonio`](sdks/python/) | Python | Sync and async client over HTTPS |
 | [`axonio-ros2`](sdks/ros2/) | Python | ROS2 package: fleet-wide spatial memory for robots |
-| [`clawdb`](sdks/rust/) | Rust | Tokio async Rust client |
+| [`axonio`](sdks/rust/) | Rust | Async client (tokio, rustls) |
 | [`github.com/hackcat29/axonio-sdk/sdks/go`](sdks/go/) | Go | Go client |
+
+The old names keep working: `pip install clawdb` and `clawdb-ros2` install the new packages, the `ClawDB` class is still exported next to `Axonio`, and `CLAWDB_*` environment variables are read after `AXONIO_*`. The old `@clawdb/*` npm packages are deprecated with a pointer to these.
 
 ## Architecture
 
-There are two layers in the ClawDB product:
+There are two layers:
 
-- The Rust runtime and `clawdb-server` binary are the database engine.
-- The TypeScript, Python, and Go SDKs in this repository are clients that connect to that engine over gRPC.
+- The **engine** (`clawdb-server`, written in Rust) is the database: storage, semantic search, branching, reflection.
+- The **SDKs in this repository** are clients that talk to a server, either the Axonio cloud or one you run yourself.
 
-That means the non-Rust SDKs assume one of the following is true:
+For a self-hosted server, one of these has to be true:
 
-- `clawdb-server` is already running locally on `http://localhost:50050`
-- you have run `npx axonio-cli@latest init` successfully to provision a local server
+- `clawdb-server` is already running locally. The HTTP API is on port 8080 and gRPC on `http://localhost:50050`
+- you ran `npx axonio-cli@latest init`, which provisions a local server
 - you are pointing the SDK at a managed cloud endpoint
 
-The Rust surface is different from the other SDK tabs conceptually: Rust is the implementation layer the server is built on, while the non-Rust packages are network clients.
+---
+
+## The engine
+
+The open-source engine is maintained in these repositories:
+
+| Repository | What it is |
+|---|---|
+| [`hackcat29/ClawDB`](https://github.com/hackcat29/ClawDB) | The runtime and `clawdb-server` binary |
+| [`hackcat29/claw-vector`](https://github.com/hackcat29/claw-vector) | Semantic memory engine: embeddings and vector search |
+| [`hackcat29/claw-reflect`](https://github.com/hackcat29/claw-reflect) | Memory distillation: turns raw memories into durable summaries |
+
+They are forks of the original `Claw-DB` projects (now `Axoniodev`) and carry the fixes the Axonio cloud runs on: sessions, search, transactions and merge conflicts in the server; PostgreSQL migrations, UUID ids and workspace API keys in reflect; cluster-internal gRPC and a working embedder image in vector.
 
 ---
 
 ## 30-second quickstart
 
-TypeScript, Python, and Go examples below assume `clawdb-server` is already running locally or that you are using a cloud endpoint. If you want the local path, start with:
+All of these use the Axonio cloud: create an API key in the [dashboard](https://axonio.xyz) and export it.
 
 ```bash
-npx axonio-cli@latest init
+export AXONIO_API_KEY="ck_live_..."
 ```
-
-If auto-provision is unavailable in your environment, start `clawdb-server` manually and then use the SDKs against `http://localhost:50050`.
 
 ### TypeScript
 
 ```ts
-import { ClawDB } from 'axonio';
+import { Axonio } from 'axonio';
 
-const db = new ClawDB({ endpoint: 'http://localhost:50050', agentId: 'my-agent' });
-await db.connect();
+const db = Axonio.fromEnv(); // an API key alone means the Axonio cloud
 
-const id = await db.memory.remember('Deploy at 3 PM UTC', { memoryType: 'task', tags: ['ops'] });
-const results = await db.memory.search('deploy schedule', { topK: 5 });
-console.log(results[0].memory.content); // "Deploy at 3 PM UTC"
+const id = await db.rememberTyped('Deploy at 3 PM UTC', { type: 'task', tags: ['ops'] });
+const hits = await db.search('deploy schedule', { topK: 5 });
+console.log(hits[0]);
 ```
 
 ### Python
 
 ```python
-from axonio import ClawDB  # also importable as Axonio
+from axonio import Axonio
 
-db = ClawDB(api_key="ck_live_...", agent_id="my-agent")  # a key alone means the Axonio cloud
-
-memory_id = db.memory.remember("Deploy at 3 PM UTC", memory_type="task")
-results = db.memory.search("deploy schedule", top_k=5)
-print(results[0].content)  # "Deploy at 3 PM UTC"
+with Axonio(api_key="ck_live_...", endpoint="https://api.axonio.xyz/api/v1/gateway") as db:
+    memory_id = db.memory.remember("Deploy at 3 PM UTC", memory_type="task")
+    hits = db.memory.search("deploy schedule", top_k=5)
+    print(hits[0].content)
 ```
 
 ### Rust
 
-The Rust quickstart below shows the Rust package in this repository. Product-wise, Rust is the engine layer ClawDB is built on; the other SDKs connect to that engine through `clawdb-server`.
-
 ```rust
-use clawdb::Client;
+use axonio::{Axonio, RememberOptions, SearchOptions};
 
 #[tokio::main]
-async fn main() -> clawdb::Result<()> {
-    let db = Client::builder()
-        .endpoint("http://localhost:50050")
-        .agent_id("my-agent")
-        .build()
-        .await?;
+async fn main() -> axonio::Result<()> {
+    let db = Axonio::from_env()?;
 
-    let id = db.memory().remember("Deploy at 3 PM UTC")
-        .memory_type("task")
-        .call().await?;
+    let id = db.remember_typed("Deploy at 3 PM UTC", RememberOptions::default()).await?;
+    for hit in db.search("deploy schedule", SearchOptions::default()).await? {
+        println!("[{:.2}] {}", hit.score, hit.content);
+    }
 
-    let results = db.memory().search("deploy schedule").top_k(5).call().await?;
-    println!("{}", results[0].memory.content);
+    db.delete_memory(&id).await?;
+    db.close().await;
     Ok(())
 }
 ```
@@ -129,6 +138,8 @@ func main() {
 	fmt.Println(id, len(results))
 }
 ```
+
+For a self-hosted server, set `AXONIO_URL` (or pass an endpoint) and see each package's README.
 
 ---
 
