@@ -9,6 +9,7 @@ The TypeScript, Python, Go and Rust packages are clients for the Axonio HTTP API
 [![PyPI](https://img.shields.io/pypi/v/axonio)](https://pypi.org/project/axonio/)
 [![crates.io](https://img.shields.io/crates/v/axonio)](https://crates.io/crates/axonio)
 [![Go](https://img.shields.io/badge/go-hackcat29%2Faxonio--sdk%2Fsdks%2Fgo-00ADD8)](https://pkg.go.dev/github.com/hackcat29/axonio-sdk/sdks/go)
+![Founder School · FS26-2 alumni](https://img.shields.io/badge/Founder%20School-FS26--2%20alumni-111111)
 
 ---
 
