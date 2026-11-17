@@ -1,8 +1,18 @@
 # axonio
 
+[Documentation](https://axonio.xyz/docs/) · [MCP integrations](https://axonio.xyz/integrations/mcp-memory-server/) · [Retrieval benchmark](https://axonio.xyz/benchmarks/retrieval/)
+
 Official TypeScript client for [Axonio](https://axonio.xyz): persistent memory for AI agents.
 
-> Formerly `axonio` (the `ClawDB` class). The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
+> Axonio was formerly called ClawDB. The `ClawDB` class is still exported (and `Axonio` is the same class), and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence.
+
+## How requests flow
+
+```text
+Agent application → Axonio SDK → hosted gateway or self-hosted server → memory engine
+```
+
+Use a scoped API key for hosted requests. The server stores and retrieves memory, and the SDK returns the results to your application.
 
 ## Install
 

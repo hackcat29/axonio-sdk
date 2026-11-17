@@ -1,6 +1,8 @@
 # axonio-langchain
 
-LangChain.js integration for ClawDB retrieval, chat history, and tools.
+[Documentation](https://axonio.xyz/docs/) · [MCP integrations](https://axonio.xyz/integrations/mcp-memory-server/) · [Retrieval benchmark](https://axonio.xyz/benchmarks/retrieval/) · [LangChain.js guide](https://axonio.xyz/docs/integrations-and-adapters/langchain/)
+
+LangChain.js integration for Axonio retrieval, chat history, and tools.
 
 ## Install
 

@@ -1,8 +1,18 @@
 # axonio
 
+[Documentation](https://axonio.xyz/docs/) · [MCP integrations](https://axonio.xyz/integrations/mcp-memory-server/) · [Retrieval benchmark](https://axonio.xyz/benchmarks/retrieval/)
+
 Official Python client for [Axonio](https://axonio.xyz): persistent memory for AI agents, with sync and async APIs.
 
 > Formerly `clawdb`. `pip install axonio` now installs this package, and `import clawdb` still works; `AXONIO_*` environment variables take precedence over `CLAWDB_*`. Pure Python over HTTPS: no gRPC toolchain or generated code to install.
+
+## How requests flow
+
+```text
+Agent application → Axonio SDK → hosted gateway or self-hosted server → memory engine
+```
+
+Use a scoped API key for hosted requests. The server stores and retrieves memory, and the SDK returns the results to your application.
 
 ## Install
 

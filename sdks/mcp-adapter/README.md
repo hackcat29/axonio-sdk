@@ -1,8 +1,10 @@
 # axonio-mcp
 
+[Documentation](https://axonio.xyz/docs/) · [MCP integrations](https://axonio.xyz/integrations/mcp-memory-server/) · [Retrieval benchmark](https://axonio.xyz/benchmarks/retrieval/) · [Claude Code](https://axonio.xyz/integrations/claude-code/) · [Cursor CLI](https://axonio.xyz/integrations/cursor-cli/)
+
 Model Context Protocol server for [Axonio](https://axonio.xyz), over stdio.
 
-> Formerly `axonio-mcp`. The `clawdb-mcp` command and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence. Tool names (`clawdb_*`) are unchanged so existing agents keep working.
+> The `clawdb-mcp` command and the `CLAWDB_*` environment variables still work; `AXONIO_*` takes precedence. Tool names (`clawdb_*`) are unchanged so existing agents keep working.
 
 ## Install
 
